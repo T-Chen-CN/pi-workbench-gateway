@@ -15,7 +15,6 @@ from __future__ import annotations
 
 import dataclasses
 import logging
-import os
 
 from .config import ADMIN_KEY_ENV, PLUGIN_NAME, HubConfig, load_config, take_admin_key
 
@@ -64,7 +63,7 @@ def register(ctx) -> None:
     if not hub_config.admin_key:
         logger.warning(
             "%s %s is not set: pairing and device management stay disabled. "
-            "Put it in the gateway service environment (not in .env).",
+            "Set it in the profile's .env (Hermes loads .env into the gateway env at startup).",
             _log,
             ADMIN_KEY_ENV,
         )
@@ -81,7 +80,7 @@ def register(ctx) -> None:
         adapter_factory=_make_adapter,
         check_fn=_deps_ok,
         required_env=[ADMIN_KEY_ENV],
-        install_hint=f"set {ADMIN_KEY_ENV} in the gateway service environment",
+        install_hint=f"set {ADMIN_KEY_ENV} in the profile's .env",
     )
     logger.info(
         "%s platform registered (listen=%s:%s pairing=%s)",
@@ -92,4 +91,4 @@ def register(ctx) -> None:
     )
 
 
-__all__ = ["register", "os"]
+__all__ = ["register"]
