@@ -5,8 +5,12 @@
 
 管理密钥的处理按 CLOUD_AGENT §5.3：
 
-* 只从服务环境读（systemd drop-in），不读 `.env`；
-* 读完之后从 `os.environ` 删掉，避免被子进程继承；
+* 来源是 Hermes 的 `<profile>/.env`：`hermes plugins install` 装完会提示填写
+  `PI_HUB_ADMIN_KEY` 并写进那里，gateway 启动时把 `.env` 装载进 `os.environ`
+  （`hermes_cli/env_loader.load_hermes_dotenv`，`gateway/run.py` 导入）。本模块只读
+  进程环境，**自己不解析 `.env`**；
+* 读完之后从 `os.environ` 删掉，缩小被子进程顺走的面积——但这不是保密手段
+  （Hermes 的子进程会自行重载 `.env`）；保密靠 `.env` 的 600 权限与永不回显；
 * 比较用常量时间，永不进日志。
 """
 

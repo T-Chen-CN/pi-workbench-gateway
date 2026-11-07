@@ -117,11 +117,32 @@ optional_env:               # ← 对象列表
 | --- | --- | --- |
 | `API_SERVER_KEY` | Hermes（profile `.env`） | 转发 `/v1/*` 时的 Bearer |
 | `HERMES_DASHBOARD_SESSION_TOKEN` | Hermes（可选） | 转发 dashboard 侧路 |
-| `HERMES_HOME` | systemd unit | 定位 profile，用于推导默认媒体根 |
-| `PI_HUB_*` | systemd drop-in | 插件自己的配置（监听、限流、媒体根、管理密钥） |
+| `HERMES_HOME` | systemd unit / Hermes | 定位 profile，用于推导默认媒体根 |
+| `PI_HUB_*` | `<profile>/.env`（安装时 `requires_env` 提示写入） | 插件自己的配置（监听、限流、媒体根、管理密钥） |
 
-`shim.py` 是唯一读 `os.environ` 的地方（旧插件把 `_int_env` 放 shim，adapter 里也直接读了几处，
+`config.py` 是唯一读 `os.environ` 的地方（旧插件把 `_int_env` 放 shim，adapter 里也直接读了几处，
 新插件统一收进 `config.py`）。
+
+### 5.1 安装与密钥落盘（0.22.6 源码实测）
+
+```text
+plugins_cmd_install.py:175  _prompt_plugin_env_vars()   → 逐个提示 + save_env_value()
+plugins_cmd.py:430          _missing_env_specs()        → get_env_value() 判"没设置"才提示
+config.py                   get_env_value()             → os.environ 先，再 <profile>/.env
+config.py                   save_env_value()             → 写 <profile>/.env
+gateway/run.py:1575         load_hermes_dotenv()         → 启动时把 .env 装进 os.environ
+```
+
+结论：
+
+- `hermes plugins install <git-url|owner/repo>` 克隆到 `<profile>/plugins/<仓库名>/`，**目录名取自仓库名**，
+  所以仓库名必须等于清单里的 `name`。装完自动跑 `_prompt_plugin_env_vars`，答案写进 `<profile>/.env`。
+- 提示只针对"`get_env_value()` 认为没设置"的变量：进程环境或 `.env` 里已有的不再问。
+- `requires_env` 写纯字符串 → 普通 `input()`（可管道喂）；写 `{name, secret: true}` → 遮罩输入（要 TTY）。
+  自动化友好度上两者有实质差别。
+- `install` **不**自动跑校验：`validate` / `doctor --ci` 是独立步骤。
+- `plugins remove` 不删 `plugin-data/<name>/`，数据目录要手动清。
+- `.env` 由 Hermes 装载进 `os.environ`，所以插件只读进程环境即可，不要自己解析 `.env`。
 
 ## 6. CLI 可用命令（实测）
 

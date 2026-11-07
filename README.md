@@ -35,13 +35,31 @@ python -m hub.devserver                          # 本机起假上游 + 网关�
 
 ## 安装（部署到 Hermes）
 
+走 Hermes 官方安装流程，不要手拷文件：目录名取自仓库名，必须与清单里的 `name` 一致。
+
 ```bash
-hermes plugins install https://github.com/T-Chen-CN/pi-workbench-gateway.git --no-enable
-# 配好 PI_HUB_ADMIN_KEY 等环境变量后再启用
-hermes plugins enable pi-workbench-gateway
+# 装完会提示填写 PI_HUB_ADMIN_KEY，答案由 Hermes 写进 <profile>/.env 并自动启用
+hermes plugins install https://github.com/T-Chen-CN/pi-workbench-gateway.git --yes-deps --enable
+
+hermes plugins validate pi-workbench-gateway      # 清单自检
+hermes plugins doctor pi-workbench-gateway --ci   # 有错就非零退出
 ```
 
-部署拓扑、Caddy、systemd drop-in、连接码生成与验收，见应用仓库
+非交互（自动化 / CI / 云主机初始化）——`requires_env` 声明成纯字符串，提示读 stdin，
+所以可以把值管子进去：
+
+```bash
+printf '%s\n' "$PI_HUB_ADMIN_KEY" | hermes plugins install \
+  https://github.com/T-Chen-CN/pi-workbench-gateway.git --yes-deps --enable
+```
+
+- 密钥落盘位置是 `<profile>/.env`（Hermes 官方约定，和 `API_SERVER_KEY` 同处）；
+  gateway 启动时把 `.env` 装载进 `os.environ`，插件只读进程环境。
+- 想要"先装不启用"就用 `--no-enable`，之后 `hermes plugins enable pi-workbench-gateway`。
+- **`hermes plugins remove` 不会删 `<profile>/plugin-data/pi-workbench-gateway/`**（设备库、审计
+  在那儿），要彻底清干净得手动删。
+
+部署拓扑、Caddy、连接码生成与验收，见应用仓库
 `docs/requirements/CLOUD_AGENT.md` §7。
 
 ## 目录
