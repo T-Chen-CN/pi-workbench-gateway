@@ -1,0 +1,21 @@
+# 行尾统一为 LF：本仓库是 Python 项目，且部署在 Linux。
+# 本机 Windows 的 core.autocrlf=true 会把检出改成 CRLF，必须在这里压住。
+* text=auto eol=lf
+
+*.py text eol=lf
+*.md text eol=lf
+*.yaml text eol=lf
+*.yml text eol=lf
+*.json text eol=lf
+*.sh text eol=lf
+*.txt text eol=lf
+
+*.bat text eol=crlf
+*.cmd text eol=crlf
+
+*.png binary
+*.jpg binary
+*.ico binary
+*.zip binary
+*.gz binary
+*.db binary
