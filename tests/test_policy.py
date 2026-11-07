@@ -44,6 +44,16 @@ class ConfigTests(HubTestCase):
         self.assertEqual(status, 400)
         self.assertEqual(payload["error"]["code"], "invalid_params")
 
+    def test_write_rejects_flat_body_and_says_the_shape(self) -> None:
+        """漏掉外层 config 时报错要指形状，而不是让人去查取值表。"""
+        token = self.pair()
+        status, payload, _ = self.call(
+            "PUT", "/api/config", token=token, body={"approvals": {"mode": "manual"}}
+        )
+        self.assertEqual(status, 400)
+        self.assertEqual(payload["error"]["code"], "invalid_params")
+        self.assertIn("config", payload["error"]["message"])
+
     def test_write_rejects_other_keys(self) -> None:
         token = self.pair()
         status, payload, _ = self.call(

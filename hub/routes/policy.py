@@ -90,7 +90,13 @@ def register(router: Router, app: HubApp) -> None:
         approvals = config.get("approvals") if isinstance(config.get("approvals"), dict) else {}
         mode = approvals.get("mode")
         if mode not in APPROVAL_MODES:
-            raise HubError("invalid_params", f"approvals.mode 只接受 {list(APPROVAL_MODES)}")
+            # 真机验收时踩过：请求体漏掉外层 `config` 也走到这里，报「mode 不合法」会让人
+            # 去查取值表，实际是形状不对。把形状一起写进消息。
+            raise HubError(
+                "invalid_params",
+                f"approvals.mode 只接受 {list(APPROVAL_MODES)}；"
+                '请求体形如 {"config":{"approvals":{"mode":"manual"}}}',
+            )
         if set(config.keys()) - {"approvals"} or set(approvals.keys()) - {"mode"}:
             raise HubError("invalid_params", "只允许写 approvals.mode 一个键")
 

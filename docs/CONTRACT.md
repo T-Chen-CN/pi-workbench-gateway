@@ -59,6 +59,13 @@
 | `POST` | `/api/chat/image-upload` | body `{data_url, filename}` |
 | `GET` | `/api/fs/read-data-url?path=` | `fsguard` + `realpath` 白名单 |
 
+真机验收踩过的两个坑（别再踩）：
+
+- 上传是 **JSON**（`data_url` 是完整 data URL 字符串），**不是 multipart**。用 `curl -F` 会掉进上游
+  FastAPI 的 422 编码器崩溃（`UnicodeDecodeError` → `500 Internal Server Error`），症状是
+  「插件 500 了」，其实是请求形状错。
+- 越界路径（包括 profile 的 `.env` 本身）一律 `403 path_not_allowed`，不是 404。
+
 ## 错误形状（桌面端按 code 分支）
 
 ```json
