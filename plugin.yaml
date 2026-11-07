@@ -1,0 +1,56 @@
+name: pi-workbench-gateway
+label: Pi Workbench Gateway
+kind: platform
+version: 0.1.0
+manifest_version: 2
+author: Pi Workbench
+license: MIT
+description: >
+  Pi Workbench 桌面端与云端 Hermes Agent 之间唯一的一条缝。
+
+  Device pairing via one-time codes, one token per machine, per-device scopes
+  (chat / dispatch), rate limiting, audit, and a deny-by-default reverse proxy to
+  the local api_server so runs, SSE streams, approvals, sessions and jobs keep
+  working unchanged. The public dashboard is NOT proxied: it keeps talking to
+  Hermes directly.
+
+# 不设上界是刻意的：上游补丁版本不应该阻止安装（CLOUD_AGENT §5.2）。
+requires_hermes: ">=0.22.6"
+python_dependencies: []
+
+requires_env:
+  - PI_HUB_ADMIN_KEY
+
+optional_env:
+  - name: PI_HUB_PUBLIC_URL
+    description: "对外网关地址，例如 https://hub.example.com（用于拼连接码链接）"
+    prompt: "Public gateway URL"
+    password: false
+  - name: PI_HUB_PUBLIC_DASHBOARD_URL
+    description: "对外控制台地址（默认从 PI_HUB_PUBLIC_URL 推导：hub. → dash.）"
+    prompt: "Public dashboard URL"
+    password: false
+  - name: HERMES_API_BASE
+    description: "本机 api_server 地址（默认 http://127.0.0.1:8642）"
+    prompt: "Hermes api_server base URL"
+    password: false
+  - name: PI_HUB_DASHBOARD_BASE
+    description: "本机 dashboard 地址（默认 http://127.0.0.1:9119）"
+    prompt: "Hermes dashboard base URL"
+    password: false
+  - name: PI_HUB_HOST
+    description: "监听地址（默认 127.0.0.1；保持 loopback，由反代终止 TLS）"
+    prompt: "Gateway bind host"
+    password: false
+  - name: PI_HUB_PORT
+    description: "监听端口（默认 8484）"
+    prompt: "Gateway port"
+    password: false
+  - name: PI_HUB_RATE_LIMIT
+    description: "每台设备每分钟的请求上限（默认 60）"
+    prompt: "Gateway rate limit (req/min/device)"
+    password: false
+  - name: PI_HUB_FS_ROOTS
+    description: "允许读的媒体根目录，用系统路径分隔符拼接（Linux ':' / Windows ';'）"
+    prompt: "Allowed media roots"
+    password: false

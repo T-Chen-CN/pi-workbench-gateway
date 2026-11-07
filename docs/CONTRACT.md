@@ -11,7 +11,7 @@
 | 客户端 | 头 |
 | --- | --- |
 | 桌面端 → 网关 | `Authorization: Bearer pi_...`（设备 token） |
-| 网关 → api_server | `Authorization: Bearer <API_SERVER_KEY>` |
+| 网关 → api_server | `Authorization: Bearer <API_SERVER_KEY>`，并注入 `X-Pi-Device: <deviceId>` |
 | 网关 → 管理接口 | `X-Pi-Admin-Key: <PI_HUB_ADMIN_KEY>`（只在服务器侧用） |
 
 网关转发时必须**删掉**客户端的 `Authorization` / `X-Pi-Admin-Key` / `X-Pi-Device`，
@@ -21,7 +21,8 @@
 
 | 方法 | 路径 | 鉴权 | 备注 |
 | --- | --- | --- | --- |
-| `GET` | `/v1/hub/health` | 无 | 桌面端用它判断「网关活着 / 上游活着」 |
+| `GET` | `/v1/hub/health` | 无 | **瘦身版**：只回 `status` / `upstreamOk` / `hub` / `contractVersion` / `features` |
+| `GET` | `/v1/hub/status` | Device 或 Admin | 完整诊断（设备计数、上游版本、dashboard 地址、运行时长） |
 | `POST` | `/v1/devices/pairing` | Admin | 生成连接码，返回 `{code, expiresAt, pairingUrl}` |
 | `POST` | `/v1/devices/pair` | 无 | body `{code, deviceId, name}` → `{token, tokenPrefix, deviceId, name, scopes, dashboardUrl}` |
 | `GET` | `/v1/devices/me` | Device | 身份、scope、`lastSeenAt` / `online` / `onlineWindow` / `serverTime` |
@@ -38,7 +39,7 @@
 | `GET` | `/v1/toolsets` · `/v1/skills` · `/v1/models` |
 | `POST` | `/v1/runs`（body `{input, author, session_id?}` + `Idempotency-Key`） |
 | `GET` | `/v1/runs/{id}` |
-| `GET` | `/v1/runs/{id}/events`（SSE，带 `Last-Event-ID`） |
+| `GET` | `/v1/runs/{id}/events`（SSE，续传参数是 **query `last_seq`**，不是 `Last-Event-ID` 头） |
 | `POST` | `/v1/runs/{id}/stop` · `/steer`（body `{input}`）· `/resolve-unknown` |
 | `POST` | `/v1/runs/{id}/approval`（body **三字段必填**：`request_id` + `execution_generation` + `choice`） |
 | `POST` | `/v1/runs/{id}/clarify` |
@@ -70,5 +71,8 @@
 ## 桌面端依赖的两个细节（踩过）
 
 1. `POST /v1/runs/{id}/approval` 少任何一个字段都是 `400 invalid_params`（Hermes 0.22.6 实测）。
-2. SSE 必须逐块到达：`X-Accel-Buffering: no` + Caddy `flush_interval -1`，否则表现为
+2. SSE 必须逐块到达：`X-Accel-Buffering: no` + Caddy `flush_interval -1`，插件侧**逐行读上游**
+   （`read(n)` 会阻塞到 n 字节或 EOF，那正是「对话卡住、最后一次性出全文」），否则表现为
    「对话卡住、最后一次性出全文」。
+3. `/v1/hub/health` 已瘦身（旧版对匿名访客吐出设备计数、内部端口、运行时长）。桌面端要看完整
+   诊断请打 `/v1/hub/status`（设备 token 即可）。

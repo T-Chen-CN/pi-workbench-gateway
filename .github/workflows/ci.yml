@@ -1,0 +1,24 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        # 部署机跑的是 3.14；留一档 3.13 兜住语法与 stdlib 漂移
+        python-version: ["3.13", "3.14"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+      - name: 语法检查
+        run: python -m compileall -q .
+      - name: 单元 + 集成测试（零第三方依赖）
+        run: python -m unittest discover -s tests -t . -v
