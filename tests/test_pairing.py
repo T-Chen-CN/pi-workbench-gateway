@@ -30,9 +30,8 @@ class PairingTests(HubTestCase):
         self.assertEqual(status, 201)
         self.assertRegex(payload["code"], r"^[0-9A-Z]{5}-[0-9A-Z]{5}$")
         self.assertGreater(payload["expiresAt"], 0)
-        self.assertEqual(
-            payload["pairingUrl"], f"https://hub.test/#pair={payload['code'].replace('-', '')}"
-        )
+        # 链接里保留连字符：跟 code 字段同一个展示形（否则人眼以为拼错了）
+        self.assertEqual(payload["pairingUrl"], f"https://hub.test/#pair={payload['code']}")
         # 服务端只存哈希：把码原样存进去就说明漏了
         rows = self.hub.db.connection().execute("SELECT code_hash FROM pairing_codes").fetchall()
         self.assertTrue(all(len(row["code_hash"]) == 64 for row in rows))

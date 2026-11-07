@@ -64,8 +64,15 @@ def consume(
 
 
 def pairing_url(code: str, public_url: str, *, base_url: str = "") -> str:
-    """优先 `PI_HUB_PUBLIC_URL`，其次由请求推导。"""
+    """优先 `PI_HUB_PUBLIC_URL`，其次由请求推导。
+
+    链接里用**带连字符的展示形**（`XXXXX-XXXXX`），与响应里的 `code` 字段一致：
+    真机验收时链接写成 `31DKBE04C4`、码写成 `31DKB-E04C4`，人眼一对就以为拼错了。
+    服务端消费时两种写法都收（`normalize` 去掉分隔符后算哈希）。
+    """
     base = (public_url or base_url or "").rstrip("/")
     if not base:
         return ""
-    return f"{base}/#pair={normalize(code)}"
+    flat = normalize(code)
+    display = f"{flat[:5]}-{flat[5:]}" if len(flat) == CODE_LENGTH else flat
+    return f"{base}/#pair={display}"
