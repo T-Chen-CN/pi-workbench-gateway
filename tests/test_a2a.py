@@ -280,3 +280,69 @@ class A2AReplyTests(HubTestCase):
         self._send("答一次", "m-6", task_id=task_id)
         _, again, _ = self._send("答两次", "m-7", task_id=task_id)
         self.assertIn("不需要回答", again["error"]["message"])
+
+
+class A2AScopeTests(HubTestCase):
+    """设备 token 只能看/派自己的东西；admin 密钥不受限。"""
+
+    def setUp(self) -> None:
+        super().setUp()
+        self.token = self.pair()
+        self.call(
+            "POST",
+            "/v1/hub/workspaces",
+            body={"dispatchable": True, "workspaces": [{"id": "w1", "label": "主仓库"}]},
+            token=self.token,
+        )
+
+    def _other_device_task(self) -> str:
+        """device-1 派一条任务，用来验 device-2 看不见它。"""
+        _, created, _ = self.call(
+            "POST",
+            "/a2a",
+            body={
+                "jsonrpc": "2.0",
+                "id": 1,
+                "method": "message/send",
+                "params": {
+                    "message": {
+                        "role": "user",
+                        "messageId": "m-scope",
+                        "parts": [{"kind": "text", "text": "x"}],
+                    },
+                    "skill": "w1",
+                },
+            },
+            token=self.token,
+        )
+        return created["result"]["id"]
+
+    def test_device_token_cannot_read_other_tasks(self) -> None:
+        task_id = self._other_device_task()
+        other = self.pair(device_id="device-2")
+        _, payload, _ = self.call(
+            "POST",
+            "/a2a",
+            body={"jsonrpc": "2.0", "id": 1, "method": "tasks/get", "params": {"id": task_id}},
+            token=other,
+        )
+        self.assertIn("没有 id 为", payload["error"]["message"])
+
+    def test_device_token_cannot_cancel_other_tasks(self) -> None:
+        task_id = self._other_device_task()
+        other = self.pair(device_id="device-2")
+        _, payload, _ = self.call(
+            "POST",
+            "/a2a",
+            body={"jsonrpc": "2.0", "id": 1, "method": "tasks/cancel", "params": {"id": task_id}},
+            token=other,
+        )
+        self.assertIn("没有 id 为", payload["error"]["message"])
+        self.assertEqual(self.hub.app.dispatch.task(task_id)["state"], "queued")
+
+    def test_card_only_lists_own_skills_for_device_token(self) -> None:
+        _, card, _ = self.call("GET", "/.well-known/agent-card.json", token=self.token)
+        self.assertEqual(sorted(s["id"] for s in card["skills"]), ["device-1/w1"])
+        # admin 看到的是全部
+        _, admin_card, _ = self.call("GET", "/.well-known/agent-card.json", admin=ADMIN_KEY)
+        self.assertIn("device-1/w1", [s["id"] for s in admin_card["skills"]])

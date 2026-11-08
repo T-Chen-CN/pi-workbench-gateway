@@ -123,9 +123,27 @@ def _text_of(message: dict) -> str:
     return ""
 
 
-def _resolve(app: HubApp, skill: str) -> tuple[str, str, dict] | str:
+def _owner(request: Request) -> str | None:
+    """设备 token 只能看/派自己的东西；admin 密钥（request.device 为 None）不受限。
+
+    不这么做，任何一台设备拿自己的 token 就能读别台设备的任务、往别台设备派活 ——
+    `/v1/hub/tasks/{id}` 早就按 device 校验，A2A 不能是个例外。
+    """
+    device = getattr(request, "device", None)
+    return getattr(device, "device_id", None) if device else None
+
+
+def _visible(task: dict | None, owner: str | None) -> dict | None:
+    if task is None:
+        return None
+    if owner and task.get("deviceId") != owner:
+        return None
+    return task
+
+
+def _resolve(app: HubApp, skill: str, owner: str | None = None) -> tuple[str, str, dict] | str:
     """`device/workspace` 或工作区名 → 目标；返回字符串表示错误信息。"""
-    items = app.dispatch.list_workspaces()
+    items = [i for i in app.dispatch.list_workspaces() if not owner or i["deviceId"] == owner]
     target = (skill or "").strip()
     if not target:
         return "缺少 skill：要指定 `设备/工作区` 或工作区名。"
@@ -143,7 +161,12 @@ def _resolve(app: HubApp, skill: str) -> tuple[str, str, dict] | str:
 
 def register(router: Router, app: HubApp) -> None:
     def agent_card(request: Request) -> Response:
-        items = [item for item in app.dispatch.list_workspaces() if item["dispatchable"]]
+        owner = _owner(request)
+        items = [
+            item
+            for item in app.dispatch.list_workspaces()
+            if item["dispatchable"] and (not owner or item["deviceId"] == owner)
+        ]
         now = int(app.now())
         skills = []
         for item in items:
@@ -195,11 +218,11 @@ def register(router: Router, app: HubApp) -> None:
         if method == "message/send":
             return _send(request, rpc_id, params)
         if method == "tasks/get":
-            return _get(rpc_id, params)
+            return _get(request, rpc_id, params)
         if method == "tasks/cancel":
             return _cancel(request, rpc_id, params)
         if method == "tasks/resubscribe":
-            return _resubscribe(rpc_id, params)
+            return _resubscribe(request, rpc_id, params)
         return _rpc_error(rpc_id, METHOD_NOT_FOUND, f"不支持的方法 {method}")
 
     def _send(request: Request, rpc_id, params: dict) -> Response:
@@ -219,7 +242,7 @@ def register(router: Router, app: HubApp) -> None:
         if reply_to:
             return _reply(request, rpc_id, reply_to, prompt, params)
 
-        target = _resolve(app, skill)
+        target = _resolve(app, skill, _owner(request))
         if isinstance(target, str):
             return _rpc_error(rpc_id, INVALID_PARAMS, target)
         device_id, workspace_id, workspace = target
@@ -267,7 +290,7 @@ def register(router: Router, app: HubApp) -> None:
         )
 
     def _reply(request: Request, rpc_id, task_id: str, answer: str, params: dict) -> Response:
-        task = app.dispatch.task(task_id)
+        task = _visible(app.dispatch.task(task_id), _owner(request))
         if task is None:
             return _rpc_error(rpc_id, INVALID_PARAMS, f"没有 id 为 {task_id} 的任务")
         if task["state"] != "input_required":
@@ -299,11 +322,11 @@ def register(router: Router, app: HubApp) -> None:
             {"jsonrpc": "2.0", "id": rpc_id, "result": task_object(current, workspace)}
         )
 
-    def _get(rpc_id, params: dict) -> Response:
+    def _get(request: Request, rpc_id, params: dict) -> Response:
         task_id = str(params.get("id") or "").strip()
         if not task_id:
             return _rpc_error(rpc_id, INVALID_PARAMS, "缺少 id")
-        task = app.dispatch.task(task_id)
+        task = _visible(app.dispatch.task(task_id), _owner(request))
         if task is None:
             return _rpc_error(rpc_id, INVALID_PARAMS, f"没有 id 为 {task_id} 的任务")
         workspace = app.dispatch.workspace(task["deviceId"], task["workspaceId"])
@@ -316,6 +339,9 @@ def register(router: Router, app: HubApp) -> None:
         if not task_id:
             return _rpc_error(rpc_id, INVALID_PARAMS, "缺少 id")
         reason = str(params.get("reason") or "A2A 客户端取消")
+        mine = _visible(app.dispatch.task(task_id), _owner(request))
+        if mine is None:
+            return _rpc_error(rpc_id, INVALID_PARAMS, f"没有 id 为 {task_id} 的任务")
         task = app.dispatch.cancel(task_id, reason=reason, by="a2a")
         if task is None:
             current = app.dispatch.task(task_id)
@@ -344,11 +370,11 @@ def register(router: Router, app: HubApp) -> None:
             {"jsonrpc": "2.0", "id": rpc_id, "result": task_object(task, workspace)}
         )
 
-    def _resubscribe(rpc_id, params: dict) -> Response | StreamResponse:
+    def _resubscribe(request: Request, rpc_id, params: dict) -> Response | StreamResponse:
         task_id = str(params.get("id") or "").strip()
         if not task_id:
             return _rpc_error(rpc_id, INVALID_PARAMS, "缺少 id")
-        if app.dispatch.task(task_id) is None:
+        if _visible(app.dispatch.task(task_id), _owner(request)) is None:
             return _rpc_error(rpc_id, INVALID_PARAMS, f"没有 id 为 {task_id} 的任务")
         workspace = None
         first = app.dispatch.task(task_id)
