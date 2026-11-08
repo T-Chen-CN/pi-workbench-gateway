@@ -259,3 +259,19 @@ class ReconnectTests(HubTestCase):
         self._report(task["taskId"], kind="question", question="？")
         events = [line["event"] for line in self.audit_lines()]
         self.assertIn("dispatch.question", events)
+
+
+class FrameTests(unittest.TestCase):
+    def test_attempt_counts_the_delivery_not_the_claims(self) -> None:
+        from hub.frames import task_payload
+
+        base = {
+            "taskId": "dt_1",
+            "prompt": "x",
+            "deviceId": "d",
+            "workspaceId": "w",
+            "contextId": "",
+            "deadlineAt": 1,
+        }
+        self.assertEqual(task_payload({**base, "attempt": 0})["attempt"], 1)
+        self.assertEqual(task_payload({**base, "attempt": 1})["attempt"], 2)

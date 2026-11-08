@@ -20,7 +20,11 @@ def sse(event: str, payload: dict) -> bytes:
 
 
 def task_payload(task: dict) -> dict:
-    """派活载荷。`attempt` 让设备知道这是重投（同一任务可能被派第二次）。"""
+    """派活载荷。
+
+    `attempt` 是**这次投递是第几次执行**（1 起）：库里存的是「已经被 claim 过几次」，
+    入队时是 0、重投后是 1，所以这里 +1 才对得上设备看到的东西。
+    """
     return {
         "type": "task.assigned",
         "taskId": task["taskId"],
@@ -29,7 +33,7 @@ def task_payload(task: dict) -> dict:
         "workspaceId": task["workspaceId"],
         "contextId": task["contextId"],
         "deadlineAt": task["deadlineAt"],
-        "attempt": task["attempt"],
+        "attempt": int(task.get("attempt") or 0) + 1,
     }
 
 
