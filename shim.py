@@ -93,6 +93,7 @@ def _register_tools(ctx) -> None:
         "local_dispatch": tools.dispatch,
         "local_task_get": tools.task_get,
         "local_task_reply": tools.task_reply,
+        "local_task_trace": tools.task_trace,
         "local_task_cancel": tools.task_cancel,
     }
     for schema in tool_schemas():
