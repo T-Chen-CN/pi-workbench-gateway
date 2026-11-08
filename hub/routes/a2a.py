@@ -131,7 +131,9 @@ def _resolve(app: HubApp, skill: str) -> tuple[str, str, dict] | str:
         return "缺少 skill：要指定 `设备/工作区` 或工作区名。"
     for item in items:
         key = f"{item['deviceId']}/{item['workspaceId']}"
-        if target in (key, item["workspaceId"], item["label"]) or item["workspaceId"].endswith(target):
+        # 只认「设备/工作区」「workspaceId」「label」三种精确写法：
+        # 允许后缀匹配会让 "bfc" 这类片段命中意外的工作区
+        if target in (key, item["workspaceId"], item["label"]):
             if not item["dispatchable"]:
                 return f"工作区 {key} 没有打开派活开关。"
             return item["deviceId"], item["workspaceId"], item
