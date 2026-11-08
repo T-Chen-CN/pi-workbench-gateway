@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import unittest
 
+from hub import VERSION
 from tests.helpers import ADMIN_KEY, HubTestCase
 
 SLIM_FIELDS = {"status", "upstreamOk", "hub", "contractVersion", "features"}
@@ -34,7 +35,7 @@ class HealthTests(HubTestCase):
     def test_status_with_admin_key(self) -> None:
         status, payload, _ = self.call("GET", "/v1/hub/status", admin=ADMIN_KEY)
         self.assertEqual(status, 200)
-        self.assertEqual(payload["hub"], "0.1.0")
+        self.assertEqual(payload["hub"], VERSION)  # 版本号跟着 hub.VERSION 走，别再写死
         self.assertTrue(payload["adminKeyConfigured"])
         self.assertTrue(payload["pairingEnabled"])
         self.assertEqual(payload["contractVersion"], 1)

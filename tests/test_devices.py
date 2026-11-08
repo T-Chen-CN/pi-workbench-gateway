@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import unittest
 
+from hub import VERSION
 from tests.helpers import ADMIN_KEY, HubTestCase
 
 
@@ -14,7 +15,7 @@ class DeviceTests(HubTestCase):
         self.assertEqual(status, 200)
         self.assertEqual(payload["deviceId"], "d-me")
         self.assertEqual(payload["name"], "devbox")
-        self.assertEqual(payload["hub"], "0.1.0")
+        self.assertEqual(payload["hub"], VERSION)  # 版本号跟着 hub.VERSION 走，别再写死
         self.assertEqual(sorted(payload["scopes"]), ["chat", "dispatch"])
         self.assertEqual(payload["onlineWindow"], 90)
         self.assertIn("serverTime", payload)

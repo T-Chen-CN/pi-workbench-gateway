@@ -18,7 +18,7 @@ from .fsguard import resolve_roots  # noqa: F401  (供测试与外部调用复�
 from .ratelimit import RateLimiter
 from .upstream import Upstream
 
-VERSION = "0.1.0"
+VERSION = "0.1.1"
 CONTRACT_VERSION = 1
 FEATURES = ("pairing", "heartbeat", "policy", "media")
 ONLINE_WINDOW_SECONDS = 90
