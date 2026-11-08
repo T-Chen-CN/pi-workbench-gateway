@@ -12,8 +12,10 @@ Pi Workbench ──HTTPS + 设备 token──▶ Caddy ──▶ 本插件 (127.
 
 ## 状态
 
-**开发中，尚未发布可用版本。** 当前进度、协议、验收标准见应用仓库的
-`docs/requirements/CLOUD_AGENT.md`（唯一事实源）。
+**0.2.0**：云端 Agent 主链路（配对 / 会话 / 审批 / 任务 / 媒体 / 心跳 / 审计）+
+**工作区派活**（`tools.py` 的 `local_*` 工具 + `hub/dispatch.py` 任务 store +
+`hub/relay.py` 设备中继）。当前进度、协议、验收标准见应用仓库的
+`docs/requirements/CLOUD_AGENT.md` 与 `docs/requirements/WORKSPACE_DISPATCH.md`（唯一事实源）。
 
 ## 硬约束
 
@@ -74,8 +76,11 @@ hub/                 纯标准库 HTTP 服务，不知道 Hermes 存在
   server.py          ThreadingHTTPServer + 生命周期
   router.py errors.py auth.py db.py audit.py
   pairing.py ratelimit.py upstream.py fsguard.py
-  routes/            health / pairing / devices / proxy / policy
+  routes/            health / pairing / devices / proxy / policy / dispatch（中继流 + 上报 + 目录）
+  dispatch.py        派活任务 store（状态机 / 幂等 / claim / 租约 / 事件）
+  relay.py           每设备中继扇出（queue.Queue，满则丢并在重连后补发）
   devserver.py       本机开发入口（假上游）
+tools.py             Hermes 侧派活工具（toolset `pi_workbench`，只在 shim 里注册）
 tests/               单元 + 集成 + 契约，全部标准库
 docs/
   HERMES_PLUGIN_API.md   Hermes 插件 API 的真实签名（写代码前先读这篇）

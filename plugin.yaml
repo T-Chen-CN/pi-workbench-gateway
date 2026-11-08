@@ -21,6 +21,14 @@ python_dependencies: []
 requires_env:
   - PI_HUB_ADMIN_KEY
 
+# 声明注册的工具（doctor 会对照实际注册结果；漏写会让 `doctor --ci` 变成 WARN）
+provides_tools:
+  - local_workspaces
+  - local_dispatch
+  - local_task_get
+  - local_task_reply
+  - local_task_cancel
+
 optional_env:
   - name: PI_HUB_PUBLIC_URL
     description: "对外网关地址，例如 https://hub.example.com（用于拼连接码链接）"
