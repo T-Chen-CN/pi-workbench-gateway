@@ -202,3 +202,34 @@ class DispatchStoreTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class CancelPendingTests(unittest.TestCase):
+    def setUp(self) -> None:
+        self.tmp = tempfile.mkdtemp(prefix="pi-dispatch-pending-")
+        self.db = Database(f"{self.tmp}/hub.db")
+        self.store = DispatchStore(self.db)
+
+    def tearDown(self) -> None:
+        self.db.close()
+
+    def test_cancels_only_queued_tasks_of_that_device(self):
+        first = self.store.enqueue(
+            device_id="dev-1", workspace_id="ws", prompt="a", context_id="", client_token=""
+        )[0]
+        second = self.store.enqueue(
+            device_id="dev-2", workspace_id="ws", prompt="b", context_id="", client_token=""
+        )[0]
+        self.assertTrue(self.store.claim(first["taskId"]))
+
+        canceled = self.store.cancel_pending("dev-1", reason="设备已关闭派活", by="device")
+
+        self.assertEqual(canceled, [])
+        third = self.store.enqueue(
+            device_id="dev-1", workspace_id="ws", prompt="c", context_id="", client_token=""
+        )[0]
+        canceled = self.store.cancel_pending("dev-1", reason="设备已关闭派活", by="device")
+        self.assertEqual(canceled, [third["taskId"]])
+        self.assertEqual(self.store.task(third["taskId"])["state"], "canceled")
+        self.assertEqual(self.store.task(first["taskId"])["state"], "running")
+        self.assertEqual(self.store.task(second["taskId"])["state"], "queued")

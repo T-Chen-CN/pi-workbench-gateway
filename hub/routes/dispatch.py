@@ -140,20 +140,27 @@ def register(router: Router, app: HubApp) -> None:
         workspaces = body.get("workspaces")
         if workspaces is not None and not isinstance(workspaces, list):
             raise HubError("invalid_params", "workspaces must be a list")
+        dispatchable = bool(body.get("dispatchable", True))
         stored = app.dispatch.replace_workspaces(
             device.device_id,
             workspaces or [],
-            dispatchable=bool(body.get("dispatchable", True)),
+            dispatchable=dispatchable,
         )
+        canceled: list[str] = []
+        if not dispatchable:
+            # 关掉派活 = 不再接活：清掉还没开跑的排队任务，免得重连后被重放执行
+            canceled = app.dispatch.cancel_pending(
+                device.device_id, reason="设备已关闭派活", by="device"
+            )
         app.audit.log(
             "dispatch.catalog",
             device_id=device.device_id,
             ip=request.client_ip,
             path=request.path,
             status=200,
-            detail={"workspaces": stored},
+            detail={"workspaces": stored, "dispatchable": dispatchable, "canceled": len(canceled)},
         )
-        return json_response({"workspaces": stored})
+        return json_response({"workspaces": stored, "canceled": canceled})
 
     def list_workspaces(request: Request) -> Response:
         items = app.dispatch.list_workspaces()

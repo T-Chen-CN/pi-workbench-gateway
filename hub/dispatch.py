@@ -315,6 +315,30 @@ class DispatchStore:
         self._wake(task_id)
         return self.task(task_id)
 
+    def cancel_pending(self, device_id: str, *, reason: str = "", by: str = "device") -> list[str]:
+        """把某台设备**还没开跑**的任务全部取消，返回被取消的 taskId。
+
+        设备明确关掉派活（急停 / 用户关开关）时必须这么做：它连上后网关会重放
+        `queued` 任务，否则一条云端早已放弃的指令会在几分钟后突然在本机执行。
+        """
+        now = int(self.clock())
+        rows = self.db.connection().execute(
+            "SELECT task_id FROM dispatch_tasks WHERE device_id = ? AND state = 'queued'",
+            (device_id,),
+        ).fetchall()
+        canceled: list[str] = []
+        for row in rows:
+            task_id = str(row["task_id"])
+            self.db.connection().execute(
+                "UPDATE dispatch_tasks SET state = 'canceled', error = ?, updated_at = ?, "
+                "finished_at = ? WHERE task_id = ? AND state = 'queued'",
+                (_trim(reason, 2000), now, now, task_id),
+            )
+            self._event(task_id, "task.canceled", {"by": by})
+            self._wake(task_id)
+            canceled.append(task_id)
+        return canceled
+
     def running_count(self, device_id: str) -> int:
         row = self.db.connection().execute(
             "SELECT COUNT(*) AS n FROM dispatch_tasks WHERE device_id = ? "
