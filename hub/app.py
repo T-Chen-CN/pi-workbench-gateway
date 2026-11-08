@@ -20,7 +20,7 @@ from .ratelimit import RateLimiter
 from .relay import Relay
 from .upstream import Upstream
 
-VERSION = "0.3.0"
+VERSION = "0.3.1"
 CONTRACT_VERSION = 1
 FEATURES = ("pairing", "heartbeat", "policy", "media", "dispatch", "a2a")
 ONLINE_WINDOW_SECONDS = 90

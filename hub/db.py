@@ -15,7 +15,7 @@ import sqlite3
 import threading
 import time
 
-SCHEMA_VERSION = 2
+SCHEMA_VERSION = 3
 
 _MIGRATIONS = (
     """
@@ -109,6 +109,13 @@ _MIGRATIONS = (
     "CREATE INDEX IF NOT EXISTS idx_dispatch_events ON dispatch_events (task_id, id);",
 )
 
+# 老库升级：`CREATE TABLE IF NOT EXISTS` 不会补列，必须显式 ALTER。
+# 每一步都要「有则跳过」，否则第二次启动就会报错。
+_COLUMN_MIGRATIONS = (
+    # 派活轨迹（JSON）：设备终态回报时带一份紧凑副本，供 `local_task_trace` 查
+    ("dispatch_tasks", "trace", "TEXT"),
+)
+
 
 class Database:
     def __init__(self, path: str):
@@ -138,6 +145,13 @@ class Database:
             conn = self.connection()
             for statement in _MIGRATIONS:
                 conn.execute(statement)
+            for table, column, decl in _COLUMN_MIGRATIONS:
+                columns = {
+                    str(row["name"])
+                    for row in conn.execute(f"PRAGMA table_info({table})").fetchall()
+                }
+                if column not in columns:
+                    conn.execute(f"ALTER TABLE {table} ADD COLUMN {column} {decl}")
             row = conn.execute("SELECT version FROM schema_meta LIMIT 1").fetchone()
             if row is None:
                 conn.execute("INSERT INTO schema_meta (version) VALUES (?)", (SCHEMA_VERSION,))

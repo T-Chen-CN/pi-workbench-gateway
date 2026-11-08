@@ -212,6 +212,7 @@ class ToolTests(unittest.TestCase):
                 "local_dispatch",
                 "local_task_get",
                 "local_task_reply",
+                "local_task_trace",
                 "local_task_cancel",
             },
         )
@@ -219,3 +220,89 @@ class ToolTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TraceToolTests(unittest.TestCase):
+    """`local_task_trace`：轨迹默认不推送，但云端要能事后查。"""
+
+    def setUp(self) -> None:
+        self.tmp = tempfile.mkdtemp(prefix="pi-trace-tool-")
+        self.app = HubApp(data_dir=self.tmp, admin_key="k", rate_limit=1000)
+        self.tools = DispatchTools({"app": self.app})
+        self.app.db.upsert_device(
+            device_id="d1", name="devbox", token_hash="h", token_prefix="pi_x", scopes="chat,dispatch"
+        )
+        self.app.dispatch.replace_workspaces(
+            "d1", [{"id": "w1", "label": "主仓库"}], dispatchable=True
+        )
+
+    def _finished(self, trace=None, summary="做完了") -> str:
+        task, _ = self.app.dispatch.enqueue(device_id="d1", workspace_id="w1", prompt="x")
+        self.app.dispatch.claim(task["taskId"])
+        self.app.dispatch.report(
+            task["taskId"], kind="done", summary=summary, local_session_id="s1", trace=trace
+        )
+        return task["taskId"]
+
+    def test_renders_steps_with_markers_and_files(self) -> None:
+        task_id = self._finished(
+            trace={
+                "steps": [
+                    {"at": 1, "tool": "bash", "args": "npm test", "ok": True, "ms": 1200},
+                    {
+                        "at": 2,
+                        "tool": "edit",
+                        "args": "src/a.ts",
+                        "ok": False,
+                        "ms": 40,
+                        "file": "src/a.ts",
+                        "result": "写失败",
+                    },
+                ],
+                "total": 2,
+                "truncated": False,
+                "ms": 5000,
+            }
+        )
+        text = self.tools.task_trace({"task_id": task_id})
+        self.assertIn("共 2 步", text)
+        self.assertIn("1. [ok] bash — npm test", text)
+        self.assertIn("2. [FAILED] edit", text)
+        self.assertIn("src/a.ts", text)
+        self.assertIn("5s", text)
+
+    def test_paginates(self) -> None:
+        steps = [
+            {"at": index, "tool": "bash", "args": f"cmd{index}", "ok": True, "ms": 1}
+            for index in range(10)
+        ]
+        task_id = self._finished(trace={"steps": steps, "total": 10, "ms": 1000})
+        text = self.tools.task_trace({"task_id": task_id, "offset": 7, "limit": 5})
+        self.assertIn("第 8–10 步", text)
+        self.assertIn("cmd9", text)
+        self.assertNotIn("cmd6", text)
+
+    def test_explains_missing_trace(self) -> None:
+        task_id = self._finished(trace=None)
+        text = self.tools.task_trace({"task_id": task_id})
+        self.assertIn("没有轨迹", text)
+
+    def test_render_mentions_trace_availability(self) -> None:
+        task_id = self._finished(
+            trace={"steps": [{"at": 1, "tool": "bash", "args": "ls", "ok": True, "ms": 5}], "total": 1, "ms": 100}
+        )
+        text = self.tools.task_get({"task_id": task_id})
+        self.assertIn("local_task_trace", text)
+        self.assertIn(f'"{task_id}"', text)
+
+    def test_expired_wording_does_not_suggest_another_device(self) -> None:
+        task, _ = self.app.dispatch.enqueue(device_id="d1", workspace_id="w1", prompt="x")
+        self.app.dispatch.claim(task["taskId"])
+        # 直接把截止时间推到过去，让 sweep 走真实的 expire 路径
+        self.app.db.connection().execute(
+            "UPDATE dispatch_tasks SET deadline_at = 0 WHERE task_id = ?", (task["taskId"],)
+        )
+        self.assertEqual(self.app.dispatch.expire(), [task["taskId"]])
+        text = self.tools.task_get({"task_id": task["taskId"]})
+        self.assertIn("同一个工作区", text)
+        self.assertNotIn("换台设备", text)

@@ -346,3 +346,78 @@ class A2AScopeTests(HubTestCase):
         # admin 看到的是全部
         _, admin_card, _ = self.call("GET", "/.well-known/agent-card.json", admin=ADMIN_KEY)
         self.assertIn("device-1/w1", [s["id"] for s in admin_card["skills"]])
+
+
+class A2ATraceTests(HubTestCase):
+    """轨迹默认不推送；客户端要 `include: ["trace"]` 才随任务一起返回。"""
+
+    def setUp(self) -> None:
+        super().setUp()
+        self.token = self.pair()
+        self.call(
+            "POST",
+            "/v1/hub/workspaces",
+            body={"dispatchable": True, "workspaces": [{"id": "w1", "label": "主仓库"}]},
+            token=self.token,
+        )
+
+    def _finished_with_trace(self) -> str:
+        _, payload, _ = self.call(
+            "POST",
+            "/a2a",
+            body={
+                "jsonrpc": "2.0",
+                "id": "r",
+                "method": "message/send",
+                "params": {
+                    "message": {
+                        "role": "user",
+                        "messageId": "m-trace",
+                        "parts": [{"kind": "text", "text": "x"}],
+                    },
+                    "skill": "w1",
+                },
+            },
+            admin=ADMIN_KEY,
+        )
+        task_id = payload["result"]["id"]
+        self.hub.app.dispatch.claim(task_id)
+        self.hub.app.dispatch.report(
+            task_id,
+            kind="done",
+            summary="ok",
+            trace={
+                "steps": [{"at": 1, "tool": "bash", "args": "npm test", "ok": True, "ms": 5}],
+                "total": 1,
+                "truncated": False,
+                "ms": 900,
+            },
+        )
+        return task_id
+
+    def test_trace_is_absent_by_default(self) -> None:
+        task_id = self._finished_with_trace()
+        _, payload, _ = self.call(
+            "POST",
+            "/a2a",
+            body={"jsonrpc": "2.0", "id": 1, "method": "tasks/get", "params": {"id": task_id}},
+            admin=ADMIN_KEY,
+        )
+        self.assertNotIn("trace", payload["result"]["metadata"])
+
+    def test_trace_returned_when_asked(self) -> None:
+        task_id = self._finished_with_trace()
+        _, payload, _ = self.call(
+            "POST",
+            "/a2a",
+            body={
+                "jsonrpc": "2.0",
+                "id": 1,
+                "method": "tasks/get",
+                "params": {"id": task_id, "include": ["trace"]},
+            },
+            admin=ADMIN_KEY,
+        )
+        trace = payload["result"]["metadata"]["trace"]
+        self.assertEqual(trace["total"], 1)
+        self.assertEqual(trace["steps"][0]["tool"], "bash")

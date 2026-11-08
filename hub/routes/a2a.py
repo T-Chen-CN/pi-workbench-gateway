@@ -59,8 +59,12 @@ def _rpc_error(rpc_id, code: int, message: str) -> Response:
     )
 
 
-def task_object(task: dict, workspace: dict | None) -> dict:
-    """内部任务 → A2A `Task`。`metadata` 保留设备 / 工作区等内部锚点。"""
+def task_object(task: dict, workspace: dict | None, include: tuple[str, ...] = ()) -> dict:
+    """内部任务 → A2A `Task`。`metadata` 保留设备 / 工作区等内部锚点。
+
+    `include` 里有 `"trace"` 时才带执行轨迹（`metadata.trace`）：轨迹默认不推送，
+    要看就显式要，免得每次轮询把几十 KB 的步骤都拖回去。
+    """
     works = workspace or {}
     # `_task_row` 没有 updatedAt：用「最后发生的事」当时间戳
     stamp = (
@@ -93,24 +97,34 @@ def task_object(task: dict, workspace: dict | None) -> dict:
                 "parts": [{"kind": "text", "text": str(task["summary"])}],
             }
         )
+    metadata: dict = {
+        "deviceId": task["deviceId"],
+        "workspaceId": task["workspaceId"],
+        "workspaceLabel": works.get("label") or task["workspaceId"],
+        "attempt": task["attempt"],
+        "filesChanged": task.get("filesChanged") or [],
+        "usage": task.get("usage") or {},
+        "localSessionId": task.get("localSessionId"),
+        "createdAt": task["createdAt"],
+        "deadlineAt": task["deadlineAt"],
+    }
+    if "trace" in include and task.get("trace"):
+        metadata["trace"] = task["trace"]
     return {
         "kind": "task",
         "id": task["taskId"],
         "contextId": task["contextId"] or "",
         "status": status,
         "artifacts": artifacts,
-        "metadata": {
-            "deviceId": task["deviceId"],
-            "workspaceId": task["workspaceId"],
-            "workspaceLabel": works.get("label") or task["workspaceId"],
-            "attempt": task["attempt"],
-            "filesChanged": task.get("filesChanged") or [],
-            "usage": task.get("usage") or {},
-            "localSessionId": task.get("localSessionId"),
-            "createdAt": task["createdAt"],
-            "deadlineAt": task["deadlineAt"],
-        },
+        "metadata": metadata,
     }
+
+
+def _include(params: dict) -> tuple[str, ...]:
+    raw = params.get("include")
+    if not isinstance(raw, (list, tuple)):
+        return ()
+    return tuple(str(item) for item in raw if isinstance(item, str))
 
 
 def _text_of(message: dict) -> str:
@@ -331,7 +345,11 @@ def register(router: Router, app: HubApp) -> None:
             return _rpc_error(rpc_id, INVALID_PARAMS, f"没有 id 为 {task_id} 的任务")
         workspace = app.dispatch.workspace(task["deviceId"], task["workspaceId"])
         return json_response(
-            {"jsonrpc": "2.0", "id": rpc_id, "result": task_object(task, workspace)}
+            {
+                "jsonrpc": "2.0",
+                "id": rpc_id,
+                "result": task_object(task, workspace, _include(params)),
+            }
         )
 
     def _cancel(request: Request, rpc_id, params: dict) -> Response:

@@ -30,7 +30,7 @@
 | `POST` | `/v1/devices/{id}/revoke` | Device 自身 / Admin | 自注销只切断自己 |
 | `POST` | `/v1/devices/register` | Admin | break-glass，桌面端不调用 |
 
-## 工作区派活（0.2.0 新增，0.3.0 补 `input_required` / 租约重投 / A2A）
+## 工作区派活（0.2.0 新增，0.3.0 补 `input_required` / 租约重投 / A2A，0.3.1 补轨迹可查）
 
 设备侧要 `dispatch` scope（配对时固定签发）。云端 Hermes 走**进程内工具**，不经过这些 HTTP 端点；
 这些端点是给桌面 worker 与诊断用的。
@@ -55,6 +55,12 @@
 回报的 `done` 可带 `summary` / `files`（相对路径）/ `usage` / `localSessionId`；`failed` 带 `error`；
 `question` 带 `question`。终态任务的后续回报**不报错**，只回 `{accepted:false, state}`。
 
+终态回报还可带 `trace`（0.3.1）：`{steps:[{at,tool,args,ok,ms,result?,file?}], total, truncated, ms}`，
+单次上限 24KB（超了只留最近若干步并置 `truncated`），网关侧再压到 32KB 存 `dispatch_tasks.trace`。
+**轨迹只随终态运一趟、不发任何推送或事件**，云端要看得调 `local_task_trace` 或 A2A `tasks/get` +
+`include:["trace"]`。设备本地另存一份缓存（`cache/dispatch-traces/<taskId>.json`，保留最近 50 个），
+用于重启后回报重放。
+
 ### P2 语义（0.3.0）
 
 - **`input_required` 不是终态**：设备报 `question` 之后任务停在 `input_required`；云端
@@ -74,7 +80,7 @@
 | JSON-RPC 方法 | 参数 | 返回 |
 | --- | --- | --- |
 | `message/send` | `message{role,messageId,parts:[{kind:"text",text}],contextId?,taskId?}` + `skill`（`设备/工作区` 或工作区名）+ `configuration{blocking?,waitSeconds?,deadlineSeconds?}` | A2A `Task`；`messageId` 兼作幂等键。**带 `message.taskId` 且该任务处于 `input-required` 时，这条消息是「回答本地反问」**，不是新任务 |
-| `tasks/get` | `{id}` | A2A `Task` |
+| `tasks/get` | `{id, include?:["trace"]}` | A2A `Task`；`include` 带 `trace` 时 `metadata.trace` 是执行轨迹（默认不返回） |
 | `tasks/cancel` | `{id, reason?}` | A2A `Task`（已终态时原样返回，不报错） |
 | `tasks/resubscribe` | `{id}` | SSE：`kind:"status-update"` 帧，终态后结束 |
 

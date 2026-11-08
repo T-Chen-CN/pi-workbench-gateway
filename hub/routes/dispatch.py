@@ -103,6 +103,7 @@ def register(router: Router, app: HubApp) -> None:
                 error=body.get("error"),
                 question=body.get("question"),
                 local_session_id=body.get("localSessionId"),
+                trace=body.get("trace"),
             )
         if accepted and kind in ("done", "failed", "question", "canceled"):
             app.audit.log(

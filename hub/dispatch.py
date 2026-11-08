@@ -46,6 +46,9 @@ LEASE_SECONDS = 120
 MAX_ATTEMPTS = 2
 
 MAX_SUMMARY_CHARS = 4000
+# 轨迹字段：步数、单步各字段长度、整块体积都要卡住 —— 一条任务不该能撑爆库或上下文
+MAX_TRACE_STEPS = 200
+MAX_TRACE_STORED_CHARS = 32_000
 MAX_FILE_ENTRIES = 200
 MAX_EVENTS_PER_TASK = 200
 TASK_RETENTION_SECONDS = 7 * 24 * 3600
@@ -54,6 +57,53 @@ TASK_RETENTION_SECONDS = 7 * 24 * 3600
 def _trim(text: object, limit: int) -> str:
     value = "" if text is None else str(text)
     return value[:limit]
+
+
+def _trace_json(raw: object) -> str | None:
+    """校验并压缩设备上报的轨迹；不合法一律当没带（轨迹是锦上添花，不能挡住终态）。"""
+    if not isinstance(raw, dict):
+        return None
+    steps_raw = raw.get("steps")
+    if not isinstance(steps_raw, (list, tuple)):
+        return None
+    steps: list[dict[str, object]] = []
+    for item in steps_raw[:MAX_TRACE_STEPS]:
+        if not isinstance(item, dict):
+            continue
+        steps.append(
+            {
+                "at": int(item.get("at") or 0),
+                "tool": _trim(item.get("tool"), 60),
+                "args": _trim(item.get("args"), 200),
+                "ok": bool(item.get("ok")),
+                "ms": int(item.get("ms") or 0),
+                "result": _trim(item.get("result"), 200) if item.get("result") else "",
+                "file": _trim(item.get("file"), 300) if item.get("file") else "",
+            }
+        )
+    payload = {
+        "steps": steps,
+        "total": int(raw.get("total") or len(steps)),
+        "truncated": bool(raw.get("truncated")),
+        "ms": int(raw.get("ms") or 0),
+    }
+    text = json.dumps(payload, ensure_ascii=False)
+    while steps and len(text) > MAX_TRACE_STORED_CHARS:
+        steps = steps[1:]
+        payload["steps"] = steps
+        payload["truncated"] = True
+        text = json.dumps(payload, ensure_ascii=False)
+    return text
+
+
+def _trace_row(raw: object) -> dict | None:
+    if not raw:
+        return None
+    try:
+        parsed = json.loads(str(raw))
+    except (TypeError, ValueError):
+        return None
+    return parsed if isinstance(parsed, dict) else None
 
 
 def _files(raw: object) -> list[str]:
@@ -295,6 +345,7 @@ class DispatchStore:
         error: object = None,
         question: object = None,
         local_session_id: object = None,
+        trace: object = None,
     ) -> tuple[bool, str]:
         """设备回报。返回 `(accepted, state)`。
 
@@ -346,6 +397,9 @@ class DispatchStore:
         if local_session_id is not None:
             fields.append("local_session_id = ?")
             params.append(_trim(local_session_id, 200))
+        if trace is not None:
+            fields.append("trace = ?")
+            params.append(_trace_json(trace))
         params.append(task_id)
         conn.execute(f"UPDATE dispatch_tasks SET {', '.join(fields)} WHERE task_id = ?", params)
         self._event(task_id, f"task.{kind}", {"state": target})
@@ -536,6 +590,7 @@ class DispatchStore:
             "usage": json.loads(row["usage"]) if row["usage"] else None,
             "error": row["error"],
             "localSessionId": row["local_session_id"],
+            "trace": _trace_row(row["trace"]),
             "attempt": int(row["attempt"] or 0),
             "createdAt": int(row["created_at"]),
             "deadlineAt": int(row["deadline_at"]),

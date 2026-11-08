@@ -182,6 +182,61 @@ class DispatchTools:
         app.relay.publish(task["deviceId"], cancel_payload(task_id, reason[:400]))
         return f"已取消任务 {task_id}（{reason}）。设备收到取消后会在下一个工具边界停下。"
 
+    def task_trace(self, args: dict, **_: Any) -> str:
+        """看一条派活任务在本机执行过哪些步骤（只读，默认不推送）。"""
+        try:
+            app = self._app()
+        except _NotReady as error:
+            return str(error)
+        task_id = str(args.get("task_id") or "").strip()
+        if not task_id:
+            return "缺少 task_id。"
+        task = app.dispatch.task(task_id)
+        if task is None:
+            return f"没有 id 为 {task_id} 的任务（可能已被清理）。"
+        trace = task.get("trace") or {}
+        steps = trace.get("steps") if isinstance(trace, dict) else None
+        if not isinstance(steps, list) or not steps:
+            return (
+                f"任务 {task_id}（状态 {task['state']}）没有轨迹。"
+                "可能还在跑、被取消得太早，或者设备版本较旧没上报。"
+            )
+        offset = max(0, int(args.get("offset") or 0))
+        limit = min(200, max(1, int(args.get("limit") or 40)))
+        total = int(trace.get("total") or len(steps))
+        window = steps[offset : offset + limit]
+        head = (
+            f"任务 {task_id} 的本机执行轨迹（共 {total} 步，"
+            f"用时 {round(int(trace.get('ms') or 0) / 1000)}s"
+            + ("，已截断" if trace.get("truncated") else "")
+            + f"；本次列出第 {offset + 1}–{offset + len(window)} 步）："
+        )
+        lines = [head]
+        for index, step in enumerate(window, start=offset + 1):
+            if not isinstance(step, dict):
+                continue
+            mark = "ok" if step.get("ok") else "FAILED"
+            tool = step.get("tool") or "tool"
+            detail = (step.get("args") or "").strip()
+            line = f"{index}. [{mark}] {tool}"
+            if detail:
+                line += f" — {detail}"
+            if step.get("file"):
+                line += f" → {step['file']}"
+            ms = int(step.get("ms") or 0)
+            if ms:
+                line += f"（{ms}ms）"
+            result = (step.get("result") or "").strip()
+            if result:
+                line += f"：{result}"
+            lines.append(line)
+        if offset + len(window) < len(steps):
+            lines.append(
+                f"还有 {len(steps) - offset - len(window)} 步，用 "
+                f'local_task_trace(task_id="{task_id}", offset={offset + len(window)}) 继续看。'
+            )
+        return "\n".join(lines)
+
     # -- 辅助 ---------------------------------------------------------------
 
     def _resolve(self, app, target: str) -> tuple[tuple[str, str, dict] | None, str]:
@@ -240,7 +295,12 @@ def _render(task: dict, workspace: dict) -> str:
             + "需要人来定就先问用户。"
         )
     if state == "expired":
-        return head + "。超过截止时间仍未完成，可以换台设备重派。"
+        # 不要暗示「换台设备重派」：不同设备上的工作区是不同的一棵树，换设备等于换任务
+        return (
+            head
+            + "。超过截止时间仍未完成（本机可能卡住或离线）。要接着做就在**同一个工作区**"
+            "重派，或者先问用户要不要重派。"
+        )
     if state == "canceled":
         return head + "。" + (task.get("error") or "")
     if state == "failed":
@@ -262,6 +322,14 @@ def _render(task: dict, workspace: dict) -> str:
     if attempt > 1:
         # attempt 是「跑过几次」：2 表示重投了 1 次
         parts.append(f"（本机执行过 {attempt} 次，含重投 {attempt - 1} 次）")
+    trace = task.get("trace") or {}
+    steps = trace.get("steps") if isinstance(trace, dict) else None
+    if isinstance(steps, list) and steps:
+        total = trace.get("total") or len(steps)
+        parts.append(
+            f"处置轨迹共 {total} 步；需要看具体步骤就调 "
+            f'local_task_trace(task_id="{task["taskId"]}")。'
+        )
     return "\n".join(parts)
 
 
@@ -345,6 +413,22 @@ def tool_schemas() -> list[dict]:
                     "wait_seconds": {"type": "number", "description": "回答后最多等多久（默认 90）"},
                 },
                 "required": ["task_id", "answer"],
+            },
+        },
+        {
+            "name": "local_task_trace",
+            "description": (
+                "查一个派活任务在本地执行过的步骤（跑了哪些工具、成败、耗时、改了哪个文件）。"
+                "用户问「它到底改了什么」、你要判断要不要重派时看。只查不推送，任务还在跑就再等等。"
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "task_id": {"type": "string"},
+                    "offset": {"type": "number", "description": "从第几步开始（默认 0）"},
+                    "limit": {"type": "number", "description": "最多列几步（默认 40，上限 200）"},
+                },
+                "required": ["task_id"],
             },
         },
         {
