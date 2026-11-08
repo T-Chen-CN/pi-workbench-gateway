@@ -17,6 +17,11 @@ from __future__ import annotations
 import json
 from typing import Any
 
+try:  # 插件内以包导入；单测直接 `from tools import ...`（顶层模块）
+    from .hub.frames import answered_payload, cancel_payload, task_payload
+except ImportError:  # pragma: no cover
+    from hub.frames import answered_payload, cancel_payload, task_payload
+
 TOOLSET = "pi_workbench"
 
 DEFAULT_WAIT_SECONDS = 90.0
@@ -116,7 +121,7 @@ class DispatchTools:
             deadline_seconds=deadline_seconds,
         )
         if created:
-            app.relay.publish(device_id, _assigned_frame(task))
+            app.relay.publish(device_id, task_payload(task))
         wait_seconds = _clamp_wait(args.get("wait_seconds"))
         task = store.wait(task["taskId"], wait_seconds) or task
         return _render(task, workspace)
@@ -154,14 +159,7 @@ class DispatchTools:
             return f"任务 {task_id} 现在不需要回答（状态 {task['state']}）。"
         if not app.dispatch.answer(task_id, answer):
             return f"回答没有送达：任务 {task_id} 已经不在等待回答的状态。"
-        app.relay.publish(
-            task["deviceId"],
-            {
-                "type": "task.answered",
-                "taskId": task_id,
-                "answer": answer[:4000],
-            },
-        )
+        app.relay.publish(task["deviceId"], answered_payload(task_id, answer[:4000]))
         task = app.dispatch.wait(task_id, _clamp_wait(args.get("wait_seconds"))) or task
         workspace = app.dispatch.workspace(task["deviceId"], task["workspaceId"]) or {}
         return _render(task, workspace)
@@ -181,10 +179,7 @@ class DispatchTools:
             if current is None:
                 return f"没有 id 为 {task_id} 的任务。"
             return f"任务 {task_id} 已经结束（状态 {current['state']}），没有取消。"
-        app.relay.publish(
-            task["deviceId"],
-            {"type": "task.cancel", "taskId": task_id, "reason": reason[:400]},
-        )
+        app.relay.publish(task["deviceId"], cancel_payload(task_id, reason[:400]))
         return f"已取消任务 {task_id}（{reason}）。设备收到取消后会在下一个工具边界停下。"
 
     # -- 辅助 ---------------------------------------------------------------
@@ -225,19 +220,6 @@ def _clamp_wait(raw: object, *, default: float = DEFAULT_WAIT_SECONDS) -> float:
     except (TypeError, ValueError):
         value = default
     return max(0.0, min(value, MAX_WAIT_SECONDS))
-
-
-def _assigned_frame(task: dict) -> dict:
-    return {
-        "type": "task.assigned",
-        "taskId": task["taskId"],
-        "prompt": task["prompt"],
-        "deviceId": task["deviceId"],
-        "workspaceId": task["workspaceId"],
-        "contextId": task["contextId"],
-        "deadlineAt": task["deadlineAt"],
-        "attempt": task["attempt"],
-    }
 
 
 def _render(task: dict, workspace: dict) -> str:

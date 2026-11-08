@@ -15,6 +15,7 @@ from urllib.parse import urlsplit
 from . import auth
 from .app import VERSION, HubApp
 from .errors import ERROR_TYPE, HubError
+from .maintenance import Maintenance
 from .router import (
     AUTH_ADMIN,
     AUTH_DEVICE,
@@ -246,6 +247,7 @@ class HubServer:
         self._port = int(port)
         self._httpd: _HubHTTPServer | None = None
         self._thread: threading.Thread | None = None
+        self._maintenance: Maintenance | None = None
 
     # -- 生命周期 -----------------------------------------------------------
 
@@ -265,8 +267,14 @@ class HubServer:
         thread.start()
         self._httpd = httpd
         self._thread = thread
+        # 超时收尾 / 租约重投 / 7 天清理都是时间驱动的，没人调就永远不跑
+        self._maintenance = Maintenance(self.app)
+        self._maintenance.start()
 
     def stop(self) -> None:
+        maintenance, self._maintenance = self._maintenance, None
+        if maintenance is not None:
+            maintenance.stop()
         httpd, self._httpd = self._httpd, None
         if httpd is not None:
             httpd.shutdown()

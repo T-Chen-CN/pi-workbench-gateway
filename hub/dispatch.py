@@ -40,6 +40,11 @@ KIND_TO_STATE = {
     "canceled": "canceled",
 }
 
+# 任务租约：claim 之后这么久没有任何回报（progress / question / done）就视为失联，可重投
+LEASE_SECONDS = 120
+# 重投上限：超过就判 failed，不再无限重试（同一条指令反复砸同一棵树更糟）
+MAX_ATTEMPTS = 2
+
 MAX_SUMMARY_CHARS = 4000
 MAX_FILE_ENTRIES = 200
 MAX_EVENTS_PER_TASK = 200
@@ -201,6 +206,69 @@ class DispatchStore:
             (device_id,),
         ).fetchall()
         return [self._task_row(row) for row in rows]
+
+    def active_for(self, device_id: str) -> list[dict]:
+        """重连时要补发的任务：没跑的和**正在跑的**。
+
+        只补 `queued` 不够（P1 的做法）：设备在跑任务时断网，重连后云端用
+        `local_task_get` 只能看到 `running`，而设备再也收不到这条任务，
+        结果双方互等。补发 `running` / `input_required` 让设备能"接回"同一任务
+        （worker 按 taskId 去重：正在跑的不重复起，等回答的继续等）。
+        """
+        rows = self.db.connection().execute(
+            "SELECT * FROM dispatch_tasks WHERE device_id = ? "
+            "AND state IN ('queued', 'running', 'input_required') ORDER BY created_at",
+            (device_id,),
+        ).fetchall()
+        return [self._task_row(row) for row in rows]
+
+    def reclaim(self, now: int | None = None) -> list[dict]:
+        """租约到期重投：`running` / `input_required` 长时间没回报的任务回到 `queued`。
+
+        返回**受影响的任务**（`state` 已是新状态）：调用方据此决定发 `task.assigned`
+        还是收尾审计。重投次数用尽的直接判 `failed`，同样落在返回值里。
+
+        为什么按「没有回报」而不是「设备离线」判断：设备可能只是网络抖动，
+        本地还在跑；只要它还在发 progress 就不该被抢走。重投后 `attempt` 已经
+        在 claim 时加过，处理方据此判断「这条指令是不是第二次执行」。
+        """
+        at = int(now if now is not None else self.clock())
+        cutoff = at - LEASE_SECONDS
+        rows = self.db.connection().execute(
+            "SELECT task_id, device_id, attempt FROM dispatch_tasks "
+            "WHERE state IN ('running', 'input_required') AND updated_at <= ?",
+            (cutoff,),
+        ).fetchall()
+        requeued: list[dict] = []
+        for row in rows:
+            task_id = str(row["task_id"])
+            if int(row["attempt"] or 0) >= MAX_ATTEMPTS:
+                # 重投次数用尽：判失败，别让云端一直等
+                cur = self.db.connection().execute(
+                    "UPDATE dispatch_tasks SET state = 'failed', error = ?, updated_at = ?, "
+                    "finished_at = ? WHERE task_id = ? AND state IN ('running', 'input_required')",
+                    ("设备两次都没有交回结果（租约到期）。", at, at, task_id),
+                )
+                if cur.rowcount == 1:
+                    self._event(task_id, "task.lease_failed", {"attempt": int(row["attempt"])})
+                    self._wake(task_id)
+                    failed = self.task(task_id)
+                    if failed is not None:
+                        requeued.append(failed)
+                continue
+            cur = self.db.connection().execute(
+                "UPDATE dispatch_tasks SET state = 'queued', claimed_at = NULL, updated_at = ? "
+                "WHERE task_id = ? AND state IN ('running', 'input_required')",
+                (at, task_id),
+            )
+            if cur.rowcount != 1:
+                continue
+            self._event(task_id, "task.requeued", {"attempt": int(row["attempt"] or 0)})
+            self._wake(task_id)
+            task = self.task(task_id)
+            if task is not None:
+                requeued.append(task)
+        return requeued
 
     def claim(self, task_id: str) -> bool:
         """原子领取：只有 `queued` 能被领走，两台设备抢同一个任务时只有一个成功。"""

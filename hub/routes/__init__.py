@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from ..app import HubApp
 from ..router import Router
-from . import devices, dispatch, health, pairing, policy, proxy
+from . import a2a, devices, dispatch, health, pairing, policy, proxy
 
 
 def register_all(router: Router, app: HubApp) -> None:
@@ -13,7 +13,17 @@ def register_all(router: Router, app: HubApp) -> None:
     devices.register(router, app)
     policy.register(router, app)
     dispatch.register(router, app)
+    a2a.register(router, app)
     proxy.register(router, app)
 
 
-__all__ = ["register_all", "devices", "dispatch", "health", "pairing", "policy", "proxy"]
+__all__ = [
+    "register_all",
+    "a2a",
+    "devices",
+    "dispatch",
+    "health",
+    "pairing",
+    "policy",
+    "proxy",
+]

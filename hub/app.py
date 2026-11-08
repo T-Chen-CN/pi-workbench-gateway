@@ -20,9 +20,9 @@ from .ratelimit import RateLimiter
 from .relay import Relay
 from .upstream import Upstream
 
-VERSION = "0.2.0"
+VERSION = "0.3.0"
 CONTRACT_VERSION = 1
-FEATURES = ("pairing", "heartbeat", "policy", "media", "dispatch")
+FEATURES = ("pairing", "heartbeat", "policy", "media", "dispatch", "a2a")
 ONLINE_WINDOW_SECONDS = 90
 UPSTREAM_PROBE_TTL_SECONDS = 5.0
 
@@ -131,7 +131,7 @@ class HubApp:
             "status": "ok",
             "hub": self.version,
             "contractVersion": 1,
-            "features": ["pairing", "heartbeat", "policy", "media"],
+            "features": list(FEATURES),
             "upstream": self.upstream.base,
             "upstreamOk": ok,
             "upstreamVersion": version,

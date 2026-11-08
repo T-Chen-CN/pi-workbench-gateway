@@ -12,10 +12,11 @@ Pi Workbench ──HTTPS + 设备 token──▶ Caddy ──▶ 本插件 (127.
 
 ## 状态
 
-**0.2.1**：云端 Agent 主链路（配对 / 会话 / 审批 / 任务 / 媒体 / 心跳 / 审计）+
+**0.3.0**：云端 Agent 主链路（配对 / 会话 / 审批 / 任务 / 媒体 / 心跳 / 审计）+
 **工作区派活**（`tools.py` 的 `local_*` 工具 + `hub/dispatch.py` 任务 store +
-`hub/relay.py` 设备中继）。0.2.1 起设备上报「不可派活」时会清掉它还没开跑的排队任务
-（`cancel_pending`），免得关掉派活后重连又被重放执行。当前进度、协议、验收标准见应用仓库的
+`hub/relay.py` 设备中继）。0.3.0 补齐派活 P2/P3：本地反问（`input_required`）、
+租约到期重投、重连接回同一任务、后台维护线程（超时收尾 / 7 天清理），以及对外
+A2A 端点（`/.well-known/agent-card.json` + `POST /a2a`）。当前进度、协议、验收标准见应用仓库的
 `docs/requirements/CLOUD_AGENT.md` 与 `docs/requirements/WORKSPACE_DISPATCH.md`（唯一事实源）。
 
 ## 硬约束

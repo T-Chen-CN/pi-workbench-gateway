@@ -6,12 +6,12 @@
 
 from __future__ import annotations
 
-import json
 import queue
 import time
 
 from ..app import HubApp
 from ..errors import HubError
+from ..frames import reconnect_frame, sse as _frame, task_frame
 from ..router import (
     AUTH_DEVICE,
     AUTH_DEVICE_OR_ADMIN,
@@ -30,35 +30,16 @@ RELAY_MAX_AGE_SECONDS = 3600
 REPORT_KINDS = ("claimed", "progress", "question", "done", "failed", "canceled")
 
 
-def _frame(event: str, payload: dict) -> bytes:
-    body = json.dumps(payload, ensure_ascii=False)
-    return f"event: {event}\ndata: {body}\n\n".encode("utf-8")
-
-
-def task_frame(task: dict) -> bytes:
-    return _frame(
-        "task.assigned",
-        {
-            "type": "task.assigned",
-            "taskId": task["taskId"],
-            "prompt": task["prompt"],
-            "deviceId": task["deviceId"],
-            "workspaceId": task["workspaceId"],
-            "contextId": task["contextId"],
-            "deadlineAt": task["deadlineAt"],
-            "attempt": task["attempt"],
-        },
-    )
-
-
 def register(router: Router, app: HubApp) -> None:
     def relay_stream(request: Request) -> StreamResponse:
         device = request.device
         if not app.relay or not app.dispatch:
             raise HubError("internal", "dispatch is not available")
         channel = app.relay.subscribe(device.device_id)
-        # 连上先补课：断线期间入队的任务不能靠「下次推送」才被发现
-        snapshot = app.dispatch.queued_for(device.device_id)
+        # 连上先补课：断线期间入队的任务不能靠「下次推送」才被发现。
+        # 正在跑的也要补（SubscribeToTask 语义）：设备断网重连后必须能接回同一任务，
+        # 否则云端看到 `running`、设备却没收到任何东西，双方互等到 deadline。
+        snapshot = app.dispatch.active_for(device.device_id)
         subscribers = app.relay.subscribers(device.device_id)
         app.audit.log(
             "dispatch.stream_opened",
@@ -77,7 +58,7 @@ def register(router: Router, app: HubApp) -> None:
                     yield task_frame(task)
                 while True:
                     if time.monotonic() - started > RELAY_MAX_AGE_SECONDS:
-                        yield _frame("relay.reconnect", {"type": "relay.reconnect"})
+                        yield reconnect_frame()
                         return
                     try:
                         frame = channel.get(timeout=RELAY_PING_SECONDS)

@@ -8,7 +8,7 @@ from __future__ import annotations
 
 __all__ = ["VERSION", "HubApp", "HubServer"]
 
-VERSION = "0.2.0"
+VERSION = "0.3.0"
 
 
 def __getattr__(name: str):  # 惰性导出：`import hub` 不应该连带起服务器模块
