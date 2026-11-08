@@ -79,7 +79,7 @@
 | `tasks/resubscribe` | `{id}` | SSE：`kind:"status-update"` 帧，终态后结束 |
 
 状态映射：内部 `queued → submitted` / `running → working` / `input_required → input-required` /
-`completed|failed|canceled` 同名 / `expired → failed`（A2A 没有 expired）。
+`completed|failed|canceled` 同名 / `expired → failed`（A2A 没有 expired，`status.message` 带「超过截止时间仍未完成」）。
 `metadata` 里带 `deviceId` / `workspaceId` / `filesChanged` / `usage` / `localSessionId` / `attempt`。
 
 ## 上游白名单（`/v1/*`、`/api/*` 转发到 api_server）
