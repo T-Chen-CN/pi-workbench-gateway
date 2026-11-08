@@ -30,7 +30,7 @@
 | `POST` | `/v1/devices/{id}/revoke` | Device 自身 / Admin | 自注销只切断自己 |
 | `POST` | `/v1/devices/register` | Admin | break-glass，桌面端不调用 |
 
-## 工作区派活（0.2.0 新增，0.3.0 补 `input_required` / 租约重投 / A2A，0.3.1 补轨迹可查）
+## 工作区派活（0.2.0 新增，0.3.0 补 `input_required` / 租约重投 / A2A，0.3.1 补轨迹可查，0.3.2 修正「设备忙」提示）
 
 设备侧要 `dispatch` scope（配对时固定签发）。云端 Hermes 走**进程内工具**，不经过这些 HTTP 端点；
 这些端点是给桌面 worker 与诊断用的。

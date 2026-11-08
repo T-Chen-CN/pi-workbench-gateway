@@ -306,3 +306,25 @@ class TraceToolTests(unittest.TestCase):
         text = self.tools.task_get({"task_id": task["taskId"]})
         self.assertIn("同一个工作区", text)
         self.assertNotIn("换台设备", text)
+
+
+class BusyDeviceWordingTests(unittest.TestCase):
+    """设备忙时不能建议「换台设备」：同一工作区只属于一台机器。"""
+
+    def setUp(self) -> None:
+        self.tmp = tempfile.mkdtemp(prefix="pi-busy-")
+        self.app = HubApp(data_dir=self.tmp, admin_key="k", rate_limit=1000)
+        self.tools = DispatchTools({"app": self.app})
+        self.app.db.upsert_device(
+            device_id="d1", name="devbox", token_hash="h", token_prefix="pi_x", scopes="chat,dispatch"
+        )
+        self.app.dispatch.replace_workspaces("d1", [{"id": "w1", "label": "主仓库"}], dispatchable=True)
+        self.app.relay.online = lambda *_args, **_kwargs: True  # 认为在线，才能走到「正忙」
+
+    def test_busy_message_does_not_suggest_another_device(self) -> None:
+        first, _ = self.app.dispatch.enqueue(device_id="d1", workspace_id="w1", prompt="x")
+        self.app.dispatch.claim(first["taskId"])
+        text = self.tools.dispatch({"workspace": "w1", "prompt": "y"})
+        self.assertIn("正忙", text)
+        self.assertNotIn("换一台设备", text)
+        self.assertNotIn("换台设备", text)

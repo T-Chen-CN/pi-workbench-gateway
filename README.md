@@ -12,11 +12,11 @@ Pi Workbench ──HTTPS + 设备 token──▶ Caddy ──▶ 本插件 (127.
 
 ## 状态
 
-**0.3.1**：云端 Agent 主链路（配对 / 会话 / 审批 / 任务 / 媒体 / 心跳 / 审计）+
+**0.3.2**：云端 Agent 主链路（配对 / 会话 / 审批 / 任务 / 媒体 / 心跳 / 审计）+
 **工作区派活**（`tools.py` 的 `local_*` 工具 + `hub/dispatch.py` 任务 store +
 `hub/relay.py` 设备中继）。0.3.0 补齐派活 P2/P3：本地反问（`input_required`）、
 租约到期重投、重连接回同一任务、后台维护线程（超时收尾 / 7 天清理），以及对外
-A2A 端点（`/.well-known/agent-card.json` + `POST /a2a`）。0.3.1 增加**轨迹可查**
+A2A 端点（`/.well-known/agent-card.json` + `POST /a2a`）。0.3.1 增加**轨迹可查**，0.3.2 修正「设备忙」提示
 （`local_task_trace` / `tasks/get` + `include:["trace"]`：默认不推送，云端要看得自己拉）。
 当前进度、协议、验收标准见应用仓库的
 `docs/requirements/CLOUD_AGENT.md` 与 `docs/requirements/WORKSPACE_DISPATCH.md`（唯一事实源）。

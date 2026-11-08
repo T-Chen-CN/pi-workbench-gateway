@@ -7,7 +7,7 @@
 纪律：
 
 * 工具永远返回**字符串**（上游 handler 约定），错误也返回可读文本而不是抛异常 ——
-  抛异常会让整轮失败，而派活失败本该是「换台设备再试」这种可恢复情况；
+  抛异常会让整轮失败，而派活失败本该是「等一会儿再试 / 先问用户」这种可恢复情况；
 * `dispatchable=false` / 设备离线 / 队列满都要给出**模型能据此决策**的话；
 * 每次调用都带上 `client_token` 语义，重放不会派两个活。
 """
@@ -109,7 +109,11 @@ class DispatchTools:
                     "Pi Workbench 打开（或稍后再试）。"
                 )
         if store.running_count(device_id) >= 1:
-            return f"设备 {device_id} 正忙（已有任务在跑）。等它结束，或换一台设备。"
+            # 设备不可互换（同一工作区只属于一台机器）：只能等，不能建议「换台设备」
+            return (
+                f"设备 {device_id} 正忙（已有任务在跑）。等它结束再用 local_workspaces 复查；"
+                "要打断就 local_task_get 看是哪条任务。"
+            )
 
         deadline_seconds = int(args.get("deadline_seconds") or 600)
         task, created = store.enqueue(
