@@ -260,7 +260,8 @@ def _render(task: dict, workspace: dict) -> str:
         parts.append(f"本地用量：{usage.get('totalTokens')} tokens")
     attempt = task.get("attempt") or 0
     if attempt > 1:
-        parts.append(f"（重投过 {attempt} 次）")
+        # attempt 是「跑过几次」：2 表示重投了 1 次
+        parts.append(f"（本机执行过 {attempt} 次，含重投 {attempt - 1} 次）")
     return "\n".join(parts)
 
 
