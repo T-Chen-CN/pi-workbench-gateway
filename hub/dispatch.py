@@ -427,9 +427,10 @@ class DispatchStore:
         for row in rows:
             task_id = str(row["task_id"])
             cur = self.db.connection().execute(
-                "UPDATE dispatch_tasks SET state = 'expired', finished_at = ?, updated_at = ? "
-                "WHERE task_id = ? AND state IN ('queued', 'running', 'input_required')",
-                (at, at, task_id),
+                "UPDATE dispatch_tasks SET state = 'expired', error = ?, finished_at = ?, "
+                "updated_at = ? WHERE task_id = ? "
+                "AND state IN ('queued', 'running', 'input_required')",
+                ("超过截止时间仍未完成（网关收尾）。", at, at, task_id),
             )
             if cur.rowcount == 1:
                 self._event(task_id, "task.expired", {})

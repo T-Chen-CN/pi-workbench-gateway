@@ -275,3 +275,27 @@ class FrameTests(unittest.TestCase):
         }
         self.assertEqual(task_payload({**base, "attempt": 0})["attempt"], 1)
         self.assertEqual(task_payload({**base, "attempt": 1})["attempt"], 2)
+
+
+class ExpireTests(unittest.TestCase):
+    def setUp(self) -> None:
+        import tempfile
+        from hub.db import Database
+
+        self.tmp = tempfile.mkdtemp(prefix="pi-expire-")
+        self.db = Database(f"{self.tmp}/hub.db")
+        self.now = 1_000_000
+        self.store = DispatchStore(self.db, clock=lambda: self.now)
+
+    def tearDown(self) -> None:
+        self.db.close()
+
+    def test_expired_task_carries_a_reason(self) -> None:
+        task, _ = self.store.enqueue(
+            device_id="d", workspace_id="w", prompt="x", deadline_seconds=30
+        )
+        self.now += 60
+        self.assertEqual(self.store.expire(), [task["taskId"]])
+        row = self.store.task(task["taskId"])
+        self.assertEqual(row["state"], "expired")
+        self.assertIn("截止时间", row["error"])
