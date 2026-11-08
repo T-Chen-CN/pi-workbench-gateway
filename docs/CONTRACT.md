@@ -44,7 +44,7 @@
 | `POST` | `/v1/runs/{id}/approval`（body **三字段必填**：`request_id` + `execution_generation` + `choice`） |
 | `POST` | `/v1/runs/{id}/clarify` |
 | `GET` | `/api/sessions?limit&offset` · `/api/sessions/{id}` · `/api/sessions/{id}/messages?...` |
-| `POST` | `/api/sessions` · `/api/sessions/{id}/fork` |
+| `POST` | `/api/sessions` |
 | `PATCH` | `/api/sessions/{id}` |
 | `DELETE` | `/api/sessions/{id}` |
 | `GET` | `/api/jobs?include_disabled=true` · `/api/jobs/{id}` |
@@ -65,6 +65,16 @@
   FastAPI 的 422 编码器崩溃（`UnicodeDecodeError` → `500 Internal Server Error`），症状是
   「插件 500 了」，其实是请求形状错。
 - 越界路径（包括 profile 的 `.env` 本身）一律 `403 path_not_allowed`，不是 404。
+
+## 上游依赖（定时任务）
+
+`POST /api/jobs` 透传给 api_server，调度表达式由 Hermes 的 `cron/jobs.py::parse_schedule` 解析：
+
+- 间隔 / 一次性（`30m`、`every 2h`、`in 30m`、ISO 时间）：纯标准库，装哪个运行时都能用。
+- cron 表达式（`0 9 * * *`）与自然语言日期（`every monday 9am`、`weekdays at 9am`）：要 `croniter`。
+  Hermes 在 `pyproject.toml` 里把它声明为核心依赖，但独立打包的运行时**不一定预装**；
+  缺的时候上游直接报错。补法：用跑 gateway 的那个解释器 `-m pip install "croniter==6.2.4"`。
+  （注意 `hermes update` 可能重置运行时，升级后重新确认一次。）
 
 ## 错误形状（桌面端按 code 分支）
 

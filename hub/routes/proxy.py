@@ -53,7 +53,8 @@ WHITELIST: tuple[Rule, ...] = (
     Rule(("PATCH",), "/api/sessions/{session_id}"),
     Rule(("DELETE",), "/api/sessions/{session_id}"),
     Rule(("GET",), "/api/sessions/{session_id}/messages"),
-    Rule(("POST",), "/api/sessions/{session_id}/fork"),
+    # 不放行 `/api/sessions/{id}/fork`：它会把源会话置为 branched 结束并整段复制历史，
+    # 桌面端没有对应入口，放行等于留一条没人用的写路径。
     Rule(("GET",), "/api/jobs"),
     Rule(("POST",), "/api/jobs"),
     Rule(("GET",), "/api/jobs/{job_id}"),

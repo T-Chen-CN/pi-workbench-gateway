@@ -22,6 +22,13 @@ class WhitelistTests(HubTestCase):
         self.assertEqual(status, 404)
         self.assertEqual(payload["error"]["code"], "not_found")
 
+    def test_session_fork_is_not_proxied(self) -> None:
+        # fork = 整段复制历史 + 把源会话置为 branched 结束；桌面端没有入口，不许透传。
+        token = self.pair()
+        status, payload, _ = self.call("POST", "/api/sessions/ses_1/fork", token=token, body={})
+        self.assertEqual(status, 404)
+        self.assertEqual(payload["error"]["code"], "not_found")
+
     def test_proxy_requires_device_token(self) -> None:
         status, payload, _ = self.call("GET", "/v1/capabilities")
         self.assertEqual(status, 401)
