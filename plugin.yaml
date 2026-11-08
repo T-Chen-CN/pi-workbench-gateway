@@ -1,7 +1,7 @@
 name: pi-workbench-gateway
 label: Pi Workbench Gateway
 kind: platform
-version: 0.1.1
+version: 0.1.2
 manifest_version: 2
 author: Pi Workbench
 license: MIT

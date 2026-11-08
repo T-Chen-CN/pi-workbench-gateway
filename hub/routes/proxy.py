@@ -61,6 +61,8 @@ WHITELIST: tuple[Rule, ...] = (
     Rule(("POST",), "/api/jobs/{job_id}/run"),
     Rule(("POST",), "/api/jobs/{job_id}/pause"),
     Rule(("POST",), "/api/jobs/{job_id}/resume"),
+    Rule(("PATCH",), "/api/jobs/{job_id}"),
+    Rule(("DELETE",), "/api/jobs/{job_id}"),
 )
 
 

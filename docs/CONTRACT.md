@@ -49,6 +49,8 @@
 | `DELETE` | `/api/sessions/{id}` |
 | `GET` | `/api/jobs?include_disabled=true` · `/api/jobs/{id}` |
 | `POST` | `/api/jobs/{id}/run` · `/pause` · `/resume`（body `{}`） |
+| `PATCH` | `/api/jobs/{id}`（只许 `name` / `schedule` / `prompt` / `enabled` 等上游白名单字段） |
+| `DELETE` | `/api/jobs/{id}` |
 
 ## dashboard 侧路（不走 `/v1` 代理，单独处理）
 

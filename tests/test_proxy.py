@@ -29,6 +29,18 @@ class WhitelistTests(HubTestCase):
         self.assertEqual(status, 404)
         self.assertEqual(payload["error"]["code"], "not_found")
 
+    def test_job_edit_and_delete_are_proxied(self) -> None:
+        # 桌面端的任务页要能改与删：上游有 PATCH / DELETE，白名单里必须放行
+        token = self.pair()
+        status, _, _ = self.call(
+            "PATCH", "/api/jobs/job_1", token=token, body={"name": "改名"}
+        )
+        self.assertEqual(status, 200)
+        status, _, _ = self.call("DELETE", "/api/jobs/job_1", token=token)
+        self.assertEqual(status, 200)
+        self.assertEqual(self.upstream.requests[-1]["method"], "DELETE")
+        self.assertEqual(self.upstream.requests[-1]["path"], "/api/jobs/job_1")
+
     def test_proxy_requires_device_token(self) -> None:
         status, payload, _ = self.call("GET", "/v1/capabilities")
         self.assertEqual(status, 401)
