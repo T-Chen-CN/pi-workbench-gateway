@@ -1,11 +1,8 @@
 # Hermes 插件 API：真实签名
 
-> **来源**：线上跑过的 `pi-workbench` v0.1.0 插件（已下线，备份在部署机
-> `/home/ubuntu/pi-hub-cleanup-*/plugin.tar.gz`），对照 Hermes Agent **v0.22.6**（`git` 安装）。
+> **对照版本**：Hermes Agent **v0.22.6**（`git` 安装）。
 > 本文只记录**实测确认过的接口**，不猜。写 `shim.py` / `adapter.py` 之前先读这里。
->
-> 旧插件的架构**不继承**（它是 `core/*` 一层平铺），新插件的分层见 `README.md`。
-> 本文只保证「怎么接进 Hermes」这件事是对的。
+> 本文只保证「怎么接进 Hermes」这件事是对的；本插件的分层见 `README.md`。
 
 ---
 
@@ -69,7 +66,7 @@ class Adapter(BasePlatformAdapter):
     async def get_chat_info(self, chat_id) -> dict: ...
 ```
 
-三条硬约束（旧插件踩过）：
+三条硬约束：
 
 1. **`connect()` 里起服务，`disconnect()` 里停服务**。gateway 负责生命周期，插件不要自己起线程
    在 import 期跑。
@@ -78,19 +75,18 @@ class Adapter(BasePlatformAdapter):
 
 ## 4. `plugin.yaml` 真实字段
 
-旧的 manifest（已实测可加载）：
+以下形状已实测可加载（实际值看仓库根的 `plugin.yaml`）：
 
 ```yaml
-name: pi-workbench          # 必须与插件目录名一致（plugins/<name>/）
-label: Pi Workbench
+name: pi-workbench-gateway  # 必须与插件目录名一致（plugins/<name>/）
+label: Pi Workbench Gateway
 kind: platform
-version: 0.1.0
+version: 0.1.1
 manifest_version: 2
 author: Pi Workbench
-license: UNLICENSED
 description: >
   ...多行描述...
-requires_hermes: ">=0.22.6,<0.24"
+requires_hermes: ">=0.22.6"
 python_dependencies: []
 
 requires_env:               # ← 字符串列表
@@ -120,8 +116,8 @@ optional_env:               # ← 对象列表
 | `HERMES_HOME` | systemd unit / Hermes | 定位 profile，用于推导默认媒体根 |
 | `PI_HUB_*` | `<profile>/.env`（安装时 `requires_env` 提示写入） | 插件自己的配置（监听、限流、媒体根、管理密钥） |
 
-`config.py` 是唯一读 `os.environ` 的地方（旧插件把 `_int_env` 放 shim，adapter 里也直接读了几处，
-新插件统一收进 `config.py`）。
+`config.py` 是唯一读 `os.environ` 的地方：`shim.py` / `adapter.py` 不直接读环境变量，
+配置一律经 `config.py` 取值。
 
 ### 5.1 安装与密钥落盘（0.22.6 源码实测）
 
@@ -157,21 +153,22 @@ hermes plugins {install, search, browse, validate, update, adopt,
 - `remove <name>`：删插件目录；**不删** `plugin-data/`，要手动清。
 - `list`：显示 name / status / version / description / source（`bundled` / `user`）。
 
-## 7. 部署机现状（坐标，供联调）
+## 7. 部署形态（部署机实测）
 
 ```text
-HERMES_HOME   /home/ubuntu/.hermes/profiles/pi-cloud
-hermes CLI    /home/ubuntu/.hermes/hermes-agent/.hermes/bin/hermes   (v0.22.6, git 安装)
-unit          hermes-gateway-pi-cloud.service   → api_server 127.0.0.1:8642
-              hermes-dashboard-pi-cloud.service → dashboard 127.0.0.1:9119
-Python        3.14.4（旧插件 __pycache__ 是 cpython-314）
-登录          ubuntu@43.160.243.96（key `SG_001.pem`）
-              本机直连 22 被拦，需走 `connect -H 127.0.0.1:7890 %h %p` 代理隧道
+HERMES_HOME   <profile 目录>（<profile>/.env 放 Hermes 自己的密钥与 PI_HUB_*）
+hermes CLI    <hermes 安装目录>/.hermes/bin/hermes          (v0.22.6, git 安装)
+unit          hermes-<profile>-gateway.service     → api_server 127.0.0.1:8642
+              hermes-<profile>-dashboard.service   → dashboard 127.0.0.1:9119
+Python        3.14.x（独立打包运行时；cron 表达式需要 croniter，见 CONTRACT）
 ```
 
-## 8. 待确认（写代码时用最小实验验证）
+远程端口若被网络策略拦住，先在本地起 SOCKS 隧道，再用 `ssh -o ProxyCommand` 过去的
+方式不写进仓库（涉及具体主机与密钥路径）。
 
-1. `ctx.register_platform` 的**完整参数集**——旧插件只用了 6 个，其余未知。
-2. `BasePlatformAdapter` 是否还有其他抽象方法（旧插件只实现了 `send` / `get_chat_info`）。
-3. `plugin_data_dir()` 是否对未注册的 id 也会创建目录。
-4. `kind: platform` 之外是否还有更贴合「纯 HTTP 入口」的类型（若有，可省掉 chat 面的两个空实现）。
+## 8. 后续若要扩展
+
+1. `ctx.register_platform` 还有几个参数未用到（本插件只用必需集）。
+2. `BasePlatformAdapter` 只实现了 `send` / `get_chat_info`，其余抽象方法未触及。
+3. `plugin_data_dir()` 对未注册 id 的行为未验证。
+4. `kind: platform` 之外是否有更贴合「纯 HTTP 入口」的类型（若有，可省掉 chat 面的两个空实现）。
