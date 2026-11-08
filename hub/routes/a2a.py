@@ -16,7 +16,7 @@ import time
 
 from ..app import HubApp
 from ..errors import HubError, not_found
-from ..frames import cancel_payload, task_payload
+from ..frames import answered_payload, cancel_payload, task_payload
 from ..router import (
     AUTH_DEVICE_OR_ADMIN,
     Request,
@@ -211,6 +211,12 @@ def register(router: Router, app: HubApp) -> None:
             or str(metadata.get("skillId") or "")
             or str(metadata.get("skill") or "")
         )
+        # 回答 `input_required`：A2A 的语义是「给同一个 task 再发一条 message」，
+        # 不是新起一个任务。不做这一步，外部客户端就没法回答本地 Agent 的反问。
+        reply_to = str(params.get("taskId") or message.get("taskId") or "").strip()
+        if reply_to:
+            return _reply(request, rpc_id, reply_to, prompt, params)
+
         target = _resolve(app, skill)
         if isinstance(target, str):
             return _rpc_error(rpc_id, INVALID_PARAMS, target)
@@ -256,6 +262,39 @@ def register(router: Router, app: HubApp) -> None:
         )
         return json_response(
             {"jsonrpc": "2.0", "id": rpc_id, "result": task_object(task, workspace)}
+        )
+
+    def _reply(request: Request, rpc_id, task_id: str, answer: str, params: dict) -> Response:
+        task = app.dispatch.task(task_id)
+        if task is None:
+            return _rpc_error(rpc_id, INVALID_PARAMS, f"没有 id 为 {task_id} 的任务")
+        if task["state"] != "input_required":
+            return _rpc_error(
+                rpc_id,
+                INVALID_PARAMS,
+                f"任务 {task_id} 现在不需要回答（状态 {task['state']}）",
+            )
+        if not app.dispatch.answer(task_id, answer):
+            return _rpc_error(rpc_id, INVALID_PARAMS, f"任务 {task_id} 已经不在等待回答的状态")
+        app.relay.publish(task["deviceId"], answered_payload(task_id, answer[:4000]))
+        app.audit.log(
+            "a2a.reply",
+            device_id=task["deviceId"],
+            ip=request.client_ip,
+            path=request.path,
+            status=200,
+            detail={"task": task_id[:24]},
+        )
+        configuration = (
+            params.get("configuration") if isinstance(params.get("configuration"), dict) else {}
+        )
+        if configuration.get("blocking"):
+            wait_seconds = float(configuration.get("waitSeconds") or 90)
+            app.dispatch.wait(task_id, min(wait_seconds, MAX_WAIT_SECONDS))
+        current = app.dispatch.task(task_id) or task
+        workspace = app.dispatch.workspace(current["deviceId"], current["workspaceId"])
+        return json_response(
+            {"jsonrpc": "2.0", "id": rpc_id, "result": task_object(current, workspace)}
         )
 
     def _get(rpc_id, params: dict) -> Response:

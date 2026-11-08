@@ -213,3 +213,70 @@ class A2ARpcTests(HubTestCase):
             token=token,
         )
         self.assertEqual(status, 403)
+
+
+class A2AReplyTests(HubTestCase):
+    """A2A 客户端回答 `input_required`：给同一个 task 再发一条 message。"""
+
+    def setUp(self) -> None:
+        super().setUp()
+        self.token = self.pair()
+        self.call(
+            "POST",
+            "/v1/hub/workspaces",
+            body={"dispatchable": True, "workspaces": [{"id": "w1", "label": "主仓库"}]},
+            token=self.token,
+        )
+
+    def _send(self, text: str, message_id: str, task_id: str = "", blocking: bool = False):
+        message = {
+            "role": "user",
+            "messageId": message_id,
+            "parts": [{"kind": "text", "text": text}],
+        }
+        if task_id:
+            message["taskId"] = task_id
+        return self.call(
+            "POST",
+            "/a2a",
+            body={
+                "jsonrpc": "2.0",
+                "id": "r",
+                "method": "message/send",
+                "params": {
+                    "message": message,
+                    "skill": "device-1/w1",
+                    "configuration": {"blocking": blocking, "waitSeconds": 0.2},
+                },
+            },
+            admin=ADMIN_KEY,
+        )
+
+    def test_reply_resumes_the_same_task(self) -> None:
+        _, payload, _ = self._send("把那个删了", "m-1")
+        task_id = payload["result"]["id"]
+        self.hub.app.dispatch.claim(task_id)
+        self.hub.app.dispatch.report(task_id, kind="question", question="删哪个分支？")
+
+        status, answered, _ = self._send("删 feature/x", "m-2", task_id=task_id)
+        self.assertEqual(status, 200, answered)
+        self.assertEqual(answered["result"]["id"], task_id)
+        self.assertEqual(answered["result"]["status"]["state"], "working")
+        self.assertEqual(self.hub.app.dispatch.task(task_id)["answer"], "删 feature/x")
+
+    def test_reply_on_finished_task_is_rejected(self) -> None:
+        _, payload, _ = self._send("做完它", "m-3")
+        task_id = payload["result"]["id"]
+        self.hub.app.dispatch.claim(task_id)
+        self.hub.app.dispatch.report(task_id, kind="done", summary="ok")
+        _, rejected, _ = self._send("还想再说一句", "m-4", task_id=task_id)
+        self.assertIn("不需要回答", rejected["error"]["message"])
+
+    def test_reply_is_idempotent_after_answer(self) -> None:
+        _, payload, _ = self._send("第一次", "m-5")
+        task_id = payload["result"]["id"]
+        self.hub.app.dispatch.claim(task_id)
+        self.hub.app.dispatch.report(task_id, kind="question", question="？")
+        self._send("答一次", "m-6", task_id=task_id)
+        _, again, _ = self._send("答两次", "m-7", task_id=task_id)
+        self.assertIn("不需要回答", again["error"]["message"])

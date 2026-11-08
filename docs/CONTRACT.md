@@ -73,7 +73,7 @@
 
 | JSON-RPC 方法 | 参数 | 返回 |
 | --- | --- | --- |
-| `message/send` | `message{role,messageId,parts:[{kind:"text",text}],contextId?}` + `skill`（`设备/工作区` 或工作区名）+ `configuration{blocking?,waitSeconds?,deadlineSeconds?}` | A2A `Task`；`messageId` 兼作幂等键 |
+| `message/send` | `message{role,messageId,parts:[{kind:"text",text}],contextId?,taskId?}` + `skill`（`设备/工作区` 或工作区名）+ `configuration{blocking?,waitSeconds?,deadlineSeconds?}` | A2A `Task`；`messageId` 兼作幂等键。**带 `message.taskId` 且该任务处于 `input-required` 时，这条消息是「回答本地反问」**，不是新任务 |
 | `tasks/get` | `{id}` | A2A `Task` |
 | `tasks/cancel` | `{id, reason?}` | A2A `Task`（已终态时原样返回，不报错） |
 | `tasks/resubscribe` | `{id}` | SSE：`kind:"status-update"` 帧，终态后结束 |
