@@ -28,6 +28,7 @@ provides_tools:
   - local_task_get
   - local_task_reply
   - local_task_cancel
+  - local_task_trace
 
 optional_env:
   - name: PI_HUB_PUBLIC_URL
