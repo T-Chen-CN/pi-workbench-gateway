@@ -15,7 +15,7 @@ import sqlite3
 import threading
 import time
 
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2
 
 _MIGRATIONS = (
     """
@@ -56,6 +56,57 @@ _MIGRATIONS = (
     );
     """,
     "CREATE INDEX IF NOT EXISTS idx_audit_at ON audit_events (at);",
+    # -- schema 2：工作区派活（H3）----------------------------------------
+    """
+    CREATE TABLE IF NOT EXISTS device_workspaces (
+      device_id    TEXT NOT NULL,
+      workspace_id TEXT NOT NULL,
+      label        TEXT NOT NULL,
+      description  TEXT NOT NULL DEFAULT '',
+      dispatchable INTEGER NOT NULL DEFAULT 0,
+      updated_at   INTEGER NOT NULL,
+      PRIMARY KEY (device_id, workspace_id)
+    );
+    """,
+    """
+    CREATE TABLE IF NOT EXISTS dispatch_tasks (
+      task_id          TEXT PRIMARY KEY,
+      client_token     TEXT NOT NULL,
+      context_id       TEXT NOT NULL DEFAULT '',
+      device_id        TEXT NOT NULL,
+      workspace_id     TEXT NOT NULL,
+      prompt           TEXT NOT NULL,
+      state            TEXT NOT NULL,
+      question         TEXT,
+      answer           TEXT,
+      summary          TEXT,
+      files_changed    TEXT,
+      usage            TEXT,
+      error            TEXT,
+      local_session_id TEXT,
+      attempt          INTEGER NOT NULL DEFAULT 0,
+      created_at       INTEGER NOT NULL,
+      updated_at       INTEGER NOT NULL,
+      deadline_at      INTEGER NOT NULL,
+      claimed_at       INTEGER,
+      started_at       INTEGER,
+      finished_at      INTEGER
+    );
+    """,
+    "CREATE INDEX IF NOT EXISTS idx_dispatch_state ON dispatch_tasks (state, device_id);",
+    "CREATE INDEX IF NOT EXISTS idx_dispatch_device ON dispatch_tasks (device_id, created_at);",
+    # 幂等：同一个 client_token 只能对应一个任务
+    "CREATE UNIQUE INDEX IF NOT EXISTS idx_dispatch_token ON dispatch_tasks (client_token);",
+    """
+    CREATE TABLE IF NOT EXISTS dispatch_events (
+      id      INTEGER PRIMARY KEY AUTOINCREMENT,
+      task_id TEXT NOT NULL,
+      at      INTEGER NOT NULL,
+      kind    TEXT NOT NULL,
+      payload TEXT
+    );
+    """,
+    "CREATE INDEX IF NOT EXISTS idx_dispatch_events ON dispatch_events (task_id, id);",
 )
 
 

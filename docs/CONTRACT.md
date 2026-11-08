@@ -30,6 +30,31 @@
 | `POST` | `/v1/devices/{id}/revoke` | Device 自身 / Admin | 自注销只切断自己 |
 | `POST` | `/v1/devices/register` | Admin | break-glass，桌面端不调用 |
 
+## 工作区派活（0.2.0 新增）
+
+设备侧要 `dispatch` scope（配对时固定签发）。云端 Hermes 走**进程内工具**，不经过这些 HTTP 端点；
+这些端点是给桌面 worker 与诊断用的。
+
+| 方法 | 路径 | 鉴权 | 备注 |
+| --- | --- | --- | --- |
+| `GET` | `/v1/hub/relay/stream` | Device(`dispatch`) | 常连 SSE。连上先补发 `queued` 任务，之后每 25s 一条 `: ping`，最长 3600s 后发 `relay.reconnect` 让客户端重连 |
+| `POST` | `/v1/hub/relay/report` | Device(`dispatch`) | body `{taskId, kind, ...}`；`kind` ∈ `claimed` / `progress` / `question` / `done` / `failed` / `canceled`；只能报自己的任务（别人的任务回 404） |
+| `POST` | `/v1/hub/workspaces` | Device(`dispatch`) | 全量上报工作区清单 `{dispatchable, workspaces:[{id,label,description}]}`；**整表替换**，少报即消失 |
+| `GET` | `/v1/hub/dispatch/workspaces` | Device 或 Admin | 目录快照：`workspaceId` / `label` / `description` / `dispatchable` / `online` / `relayStreams` / `running` |
+
+中继帧（`event:` 与 `data.type` 同值）：
+
+| 帧 | 方向 | 载荷 |
+| --- | --- | --- |
+| `task.assigned` | hub → 设备 | `taskId` / `prompt` / `deviceId` / `workspaceId` / `contextId` / `deadlineAt` / `attempt` |
+| `task.answered` | hub → 设备 | `taskId` / `answer`（本地反问的答案） |
+| `task.cancel` | hub → 设备 | `taskId` / `reason` |
+| `relay.reconnect` | hub → 设备 | 无（连接寿命到点，客户端应立即重连） |
+| `: ping` | hub → 设备 | 注释帧，保活 |
+
+回报的 `done` 可带 `summary` / `files`（相对路径）/ `usage` / `localSessionId`；`failed` 带 `error`；
+`question` 带 `question`。终态任务的后续回报**不报错**，只回 `{accepted:false, state}`。
+
 ## 上游白名单（`/v1/*`、`/api/*` 转发到 api_server）
 
 | 方法 | 路径 |

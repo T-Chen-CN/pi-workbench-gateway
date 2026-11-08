@@ -42,6 +42,12 @@ EVENTS = frozenset(
         "config.write",
         "proxy.completed",
         "proxy.upstream_error",
+        "dispatch.stream_opened",
+        "dispatch.catalog",
+        "dispatch.done",
+        "dispatch.failed",
+        "dispatch.question",
+        "dispatch.canceled",
     }
 )
 

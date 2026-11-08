@@ -14,13 +14,15 @@ from typing import Callable
 
 from .audit import Audit
 from .db import Database
+from .dispatch import DispatchStore
 from .fsguard import resolve_roots  # noqa: F401  (供测试与外部调用复用)
 from .ratelimit import RateLimiter
+from .relay import Relay
 from .upstream import Upstream
 
-VERSION = "0.1.2"
+VERSION = "0.2.0"
 CONTRACT_VERSION = 1
-FEATURES = ("pairing", "heartbeat", "policy", "media")
+FEATURES = ("pairing", "heartbeat", "policy", "media", "dispatch")
 ONLINE_WINDOW_SECONDS = 90
 UPSTREAM_PROBE_TTL_SECONDS = 5.0
 
@@ -44,6 +46,8 @@ class HubApp:
     # 运行期对象（__post_init__ 里建，允许测试注入数据库）
     db: Database = field(init=False)
     audit: Audit = field(init=False)
+    dispatch: DispatchStore = field(init=False)
+    relay: Relay = field(init=False)
     limiter: RateLimiter = field(init=False)
     upstream: Upstream = field(init=False)
     dashboard: Upstream = field(init=False)
@@ -52,6 +56,8 @@ class HubApp:
         path = self.db_path or os.path.join(self.data_dir, "hub.db")
         self.db = Database(path)
         self.audit = Audit(self.db, self.data_dir, clock=self.clock)
+        self.dispatch = DispatchStore(self.db, clock=self.clock)
+        self.relay = Relay()
         self.limiter = RateLimiter()
         self.upstream = Upstream(self.upstream_base, self.upstream_key)
         self.dashboard = Upstream(self.dashboard_base, self.dashboard_key)

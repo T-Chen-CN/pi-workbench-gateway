@@ -57,6 +57,10 @@ def register(router: Router, app: HubApp) -> None:
         if not target:
             raise HubError("invalid_params", "device id is required")
         changed = app.db.revoke_device(target, app.now())
+        # 撤销要立刻生效：中继连接掐掉，工作区从派活目录里消失，否则云端还能把活
+        # 派给一台已经没有权限的机器。
+        app.relay.drop(target)
+        app.dispatch.drop_device(target)
         app.audit.log(
             "device.revoked",
             device_id=target,

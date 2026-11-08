@@ -69,6 +69,10 @@ class PiWorkbenchAdapter(BasePlatformAdapter):
             logger.error("%s failed to listen on %s:%s: %s", _log, hub_config.host, hub_config.port, exc)
             return False
         self._hub = hub
+        # 工具层需要同进程的 store / relay：不另开服务，直接挂上去
+        from .shim import attach_app
+
+        attach_app(hub.app)
         logger.info(
             "%s listening on %s -> %s (pairing %s)",
             _log,
