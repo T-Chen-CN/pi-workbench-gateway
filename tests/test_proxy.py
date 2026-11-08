@@ -57,6 +57,35 @@ class ForwardingTests(HubTestCase):
         self.call("GET", "/api/sessions?limit=5&offset=10", token=token)
         self.assertEqual(self.upstream.requests[-1]["path"], "/api/sessions?limit=5&offset=10")
 
+    def test_websocket_upgrade_is_not_forwarded(self) -> None:
+        # AC-19：桌面端只用 SSE，没有 WS 入口。升级头是 hop-by-hop，
+        # 也不在 FORWARD_HEADERS 里 —— 不能被偷偷转成一条“看起来像 WS”的普通请求。
+        token = self.pair()
+        status, _, _ = self.call(
+            "GET",
+            "/v1/runs/run_1/events",
+            token=token,
+            headers={
+                "Upgrade": "websocket",
+                "Connection": "Upgrade",
+                "Sec-WebSocket-Key": "dGhlIHNhbXBsZSBub25jZQ==",
+                "Sec-WebSocket-Version": "13",
+            },
+        )
+        self.assertEqual(status, 200)
+        seen = self.upstream.requests[-1]["headers"]
+        for header in ("upgrade", "sec-websocket-key", "sec-websocket-version"):
+            self.assertNotIn(header, seen)
+        # 代理自己会写 connection：不可能是 Upgrade
+        self.assertEqual(seen["connection"], "keep-alive")
+
+    def test_host_header_is_rewritten_to_upstream(self) -> None:
+        # Host 不在透传名单里：上游看到的是它自己的地址，不是公网域名
+        token = self.pair()
+        self.call("GET", "/v1/capabilities", token=token, headers={"Host": "hub.example.com"})
+        seen = self.upstream.requests[-1]["headers"]
+        self.assertEqual(seen["host"], self.upstream.base.removeprefix("http://"))
+
     def test_runs_create_overrides_author_and_idempotency(self) -> None:
         token = self.pair(device_id="d-runs", name="devbox")
         status, _, _ = self.call(
